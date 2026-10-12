@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Karst 脚本读写能力探测</title>
+<style>
+  body { font: 14px/1.7 "Segoe UI", "Microsoft YaHei", sans-serif; margin: 0; padding: 24px 28px;
+         background: #1b1f23; color: #d8dee4; max-width: 960px; }
+  h1 { font-size: 19px; margin: 0 0 4px; color: #fff; }
+  p.sub { color: #8b949e; margin: 0 0 20px; }
+  section { background: #22272e; border: 1px solid #30363d; border-radius: 8px; padding: 16px 18px; margin-bottom: 14px; }
+  h2 { font-size: 14px; margin: 0 0 10px; color: #adbac7; text-transform: uppercase; letter-spacing: .5px; }
+  .row { display: flex; gap: 10px; padding: 5px 0; border-bottom: 1px dashed #2d333b; }
+  .row:last-child { border-bottom: 0; }
+  .k { width: 260px; color: #8b949e; flex: none; }
+  .v { font-family: Consolas, monospace; }
+  .ok { color: #57ab5a; font-weight: 600; }
+  .bad { color: #e5534b; font-weight: 600; }
+  .warn { color: #c69026; font-weight: 600; }
+  .dim { color: #636e7b; }
+  button, label.btn { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid #444c56;
+           background: #347d39; color: #fff; cursor: pointer; display: inline-block; margin: 0 8px 8px 0; }
+  button:hover, label.btn:hover { background: #3f8f45; }
+  button.sec, label.btn.sec { background: #2d333b; color: #d8dee4; }
+  button.sec:hover, label.btn.sec:hover { background: #373e47; }
+  input[type=file] { display: none; }
+  pre { background: #171b1f; border: 1px solid #30363d; border-radius: 6px; padding: 12px;
+        overflow: auto; max-height: 260px; font-family: Consolas, monospace; font-size: 13px;
+        white-space: pre-wrap; margin: 12px 0 0; }
+  textarea { width: 100%; box-sizing: border-box; height: 150px; background: #171b1f; color: #d8dee4;
+             border: 1px solid #30363d; border-radius: 6px; padding: 10px; margin-top: 10px;
+             font-family: Consolas, monospace; font-size: 12.5px; }
+  #drop { border: 2px dashed #444c56; border-radius: 8px; padding: 30px; text-align: center;
+          color: #8b949e; margin: 10px 0 0; transition: .15s; font-size: 15px; }
+  #drop.over { border-color: #57ab5a; background: #1f2a22; color: #57ab5a; font-weight: 600; }
+  .note { color: #8b949e; font-size: 13px; margin-top: 8px; }
+  code { background: #2d333b; padding: 1px 5px; border-radius: 4px; font-family: Consolas, monospace; }
+  .verdict { background: #1c2b1e; border: 1px solid #2d5a33; border-radius: 8px; padding: 14px 18px; margin-bottom: 14px; }
+  #pageDropHint { position: fixed; inset: 0; background: rgba(31,42,34,.93); color: #57ab5a;
+                  display: none; align-items: center; justify-content: center; font-size: 26px;
+                  font-weight: 700; z-index: 99; pointer-events: none; }
+  #pageDropHint.on { display: flex; }
+</style>
+</head>
+<body>
+
+<div id="pageDropHint">松手即可载入文件</div>
+
+<h1>Karst 脚本读写能力探测</h1>
+<p class="sub">目标：<b>不开本地服务</b>，确认页面能不能读脚本内容、能不能把改好的内容导出。</p>
+
+<div class="verdict">
+  <b>⚠️ 结论跟"在哪打开"强相关 —— 务必用独立浏览器窗口测</b><br>
+  <span class="note">
+  在内嵌预览视图里：<span class="bad">showDirectoryPicker 被拒</span>、<span class="bad">下载被拦</span>、
+  <span class="bad">剪贴板被拒</span>。<br>
+  在<b>独立 Edge 窗口</b>里实测：<span class="ok">下载成功</span>、<span class="ok">拖文件夹可用</span>、<span class="ok">列目录可用</span>。<br>
+  所以请<b>双击本文件用独立浏览器打开</b>再看结果 —— 内嵌视图的限制不代表真实能力。<br>
+  <b>重点看第 6 节</b>：目录直接读写（若可用，就不需要复制粘贴了）。
+  </span>
+</div>
+
+<section>
+  <h2>0. 自检（页面加载即完成）</h2>
+  <div id="selfcheck"></div>
+  <p class="note">
+    <b>先看这里。</b>如果某项是红的，说明是这个探测页自己的问题，
+    下面各节点的"没反应"就不是浏览器的锅。JS 报错也会显示在最后一行。
+  </p>
+</section>
+
+<section>
+  <h2>1. 环境</h2>
+  <div id="env"></div>
+</section>
+
+<section>
+  <h2>2. 读：用文件选择器打开脚本</h2>
+  <label class="btn" for="pickFiles">选择 .cs / .txt</label>
+  <input type="file" id="pickFiles" multiple accept=".cs,.txt">
+  <p class="note">
+    <b>手上一个 <code>.cs</code> 都没有也能测</b>：先做第 5 节拿到 <code>probe-test.cs</code>，
+    再回到这里选它 —— 这就是"导出→导回"的完整往返。<br>
+    按你的要求过滤是 <code>.cs,.txt</code>。<span class="dim">（注意：停用脚本会变成
+    <code>.cs.pro</code>，扩展名就成了 <code>.pro</code>，会被这个过滤挡在对话框外；
+    将来产品里若要"管理已停用的脚本"，那一步需要单独处理。）</span>
+  </p>
+  <pre id="outFiles">（还没选文件）</pre>
+</section>
+
+<section>
+  <h2>3. 读：把文件拖进页面</h2>
+  <p class="note">
+    <b>整页都是放置区</b>，拖动时整页变绿。<b>建议直接拖 .cs 文件</b>；
+    拖文件夹也可以，但若浏览器不给遍历，会明确告诉你（不会再出现
+    <code>Scripts (0 B) 读取失败</code> 那种误导信息）。
+  </p>
+  <div id="drop">把文件或整个 Scripts 文件夹拖到这里（或页面任意位置）</div>
+  <pre id="outDrop">（还没拖入）</pre>
+</section>
+
+<section>
+  <h2>4. 读：整目录列举（webkitdirectory）</h2>
+  <label class="btn sec" for="pickDir">选择一个目录</label>
+  <input type="file" id="pickDir" webkitdirectory directory multiple>
+  <pre id="outDir">（还没选目录）</pre>
+</section>
+
+<section>
+  <h2>5. 写：三种导出方式（至少一种能成就够用）</h2>
+  <button id="dl">A. 下载 probe-test.cs</button>
+  <button class="sec" id="copy">B. 复制代码到剪贴板</button>
+  <button class="sec" id="show">C. 显示代码（手动复制）</button>
+  <p class="note">
+    A 依赖浏览器允许下载（<code>file://</code> 页面有可能被拦）。
+    <b>B 和 C 不依赖任何权限</b> —— 所以"保存修改"这条路一定有保底。
+  </p>
+  <pre id="outDl">（还没点）</pre>
+  <textarea id="codeBox" readonly placeholder="点 C 后代码会出现在这里"></textarea>
+</section>
+
+<section>
+  <h2>6. 目录直接读写（关键：独立浏览器里可能可用）</h2>
+  <label class="btn" for="pickFolder">选择一个目录（读写）</label>
+  <input type="file" id="pickFolder" webkitdirectory directory multiple style="display:none">
+  <button class="sec" id="pickDirHandle">用 showDirectoryPicker 选目录</button>
+  <button class="sec" id="writeTest">测试写入（建一个临时文件再删掉）</button>
+  <p class="note">
+    <b>这一节决定架构。</b>若 <code>showDirectoryPicker</code> 在独立 Edge 里能用，
+    页面就能<b>直接列出 / 读取 / 保存 / 删除</b>脚本目录 —— 完全不需要复制粘贴，也不需要服务。<br>
+    写入测试只会建一个 <code>__karst_write_test.tmp</code> 然后立刻删掉，不留痕迹。
+  </p>
+  <pre id="outFolder">（还没操作）</pre>
+</section>
+
+<script>
+(function () {
+  'use strict';
+
+  var errors = [];
+
+  window.addEventListener('error', function (e) {
+    errors.push('JS 错误：' + (e.message || e.type) +
+      (e.lineno ? ' @ 行 ' + e.lineno : ''));
+    renderSelfCheck();
+  });
+
+  function $(id) { return document.getElementById(id); }
+
+  function line(k, v, cls) {
+    var d = document.createElement('div'); d.className = 'row';
+    var a = document.createElement('span'); a.className = 'k'; a.textContent = k;
+    var b = document.createElement('span'); b.className = 'v' + (cls ? ' ' + cls : ''); b.textContent = v;
+    d.appendChild(a); d.appendChild(b); return d;
+  }
+
+  // ---- 0. self check -------------------------------------------------------
+  // Without this, "a listener never got attached" looks exactly like
+  // "the browser blocked it" - which is precisely the ambiguity we hit.
+  var REQUIRED = ['selfcheck','env','pickFiles','outFiles','drop','outDrop',
+                  'pickDir','outDir','dl','copy','show','outDl','codeBox','pageDropHint',
+                  'pickFolder','pickDirHandle','writeTest','outFolder'];
+  var attached = {};
+
+  function renderSelfCheck() {
+    var box = $('selfcheck');
+    if (!box) return;
+    box.innerHTML = '';
+
+    var missing = REQUIRED.filter(function (id) { return !$(id); });
+    box.appendChild(line('必需元素', REQUIRED.length + ' 个，缺失 ' + missing.length + ' 个',
+      missing.length ? 'bad' : 'ok'));
+    if (missing.length) box.appendChild(line('  缺失', missing.join(', '), 'bad'));
+
+    var listeners = ['pickFiles.change','pickDir.change','dl.click','copy.click','show.click',
+                     'document.dragover','document.drop'];
+    var notAttached = listeners.filter(function (k) { return !attached[k]; });
+    box.appendChild(line('监听器', listeners.length + ' 个，未挂上 ' + notAttached.length + ' 个',
+      notAttached.length ? 'bad' : 'ok'));
+    if (notAttached.length) box.appendChild(line('  未挂上', notAttached.join(', '), 'bad'));
+
+    box.appendChild(line('JS 错误', errors.length ? errors.join(' | ') : '无',
+      errors.length ? 'bad' : 'ok'));
+  }
+
+  // ---- 1. env --------------------------------------------------------------
+  var env = $('env');
+  env.appendChild(line('页面协议', location.protocol, location.protocol === 'file:' ? 'ok' : 'warn'));
+  env.appendChild(line('isSecureContext', String(window.isSecureContext),
+    window.isSecureContext ? 'ok' : 'bad'));
+  env.appendChild(line('FileReader', String(typeof FileReader === 'function'),
+    typeof FileReader === 'function' ? 'ok' : 'bad'));
+  env.appendChild(line('Blob + URL.createObjectURL',
+    String(typeof Blob === 'function' && typeof URL.createObjectURL === 'function'),
+    (typeof Blob === 'function' && typeof URL.createObjectURL === 'function') ? 'ok' : 'bad'));
+  env.appendChild(line('navigator.clipboard.writeText',
+    String(!!(navigator.clipboard && navigator.clipboard.writeText)),
+    (navigator.clipboard && navigator.clipboard.writeText) ? 'ok' : 'warn'));
+  env.appendChild(line('showDirectoryPicker（已知不可用）',
+    String(typeof window.showDirectoryPicker === 'function'), 'dim'));
+  env.appendChild(line('浏览器', navigator.userAgent));
+
+  // ---- shared reader -------------------------------------------------------
+  var MAX_FILES = 10;
+  var MAX_BYTES = 256 * 1024;
+
+  function describe(f) { return f.name + '  (' + f.size + ' B)'; }
+
+  function readAndShow(files, target, title) {
+    if (!files || files.length === 0) {
+      target.textContent = title + '\n（没拿到文件 —— 这次是空的，不是被拦）';
+      return;
+    }
+    var list = Array.prototype.slice.call(files);
+    var pick = list.filter(function (f) { return /\.(cs|pro|txt|json|jsonc)$/i.test(f.name); });
+    if (pick.length === 0) pick = list;          // 扩展名不认识也读，重点是证明能读
+    pick = pick.slice(0, MAX_FILES);
+
+    var text = title + '\n拿到 ' + list.length + ' 个文件，读取其中 ' + pick.length + ' 个\n\n';
+    var pending = pick.length;
+
+    pick.forEach(function (f) {
+      if (f.size > MAX_BYTES) {
+        text += '── ' + describe(f) + ' ── 太大，跳过\n\n';
+        if (--pending === 0) { text += '（读取能力由其他文件验证）'; target.textContent = text; }
+        return;
+      }
+      var r = new FileReader();
+      r.onload = function () {
+        text += '── ' + describe(f) + ' ──\n' +
+                String(r.result).slice(0, 260).replace(/\n/g, '\n  ') + '\n\n';
+        if (--pending === 0) {
+          text += '✅ 能读出文件内容 —— 「再次编辑」可行。';
+          target.textContent = text;
+        }
+      };
+      r.onerror = function () {
+        text += '── ' + describe(f) + ' ── 读取失败\n\n';
+        if (--pending === 0) target.textContent = text;
+      };
+      r.readAsText(f);
+    });
+  }
+
+  // ---- 2. file input -------------------------------------------------------
+  $('pickFiles').addEventListener('change', function (e) {
+    readAndShow(e.target.files, $('outFiles'), '【文件选择器】');
+  });
+  attached['pickFiles.change'] = true;
+
+  // ---- 4. webkitdirectory --------------------------------------------------
+  $('pickDir').addEventListener('change', function (e) {
+    var files = Array.prototype.slice.call(e.target.files);
+    var cs = files.filter(function (f) { return /\.(cs|pro)$/i.test(f.name); });
+    var text = '【整目录】共 ' + files.length + ' 项\n\n脚本类文件（' + cs.length + ' 个）：\n';
+    text += cs.length ? cs.map(function (f) {
+      return '  ' + describe(f) + '   ' + (f.webkitRelativePath || '');
+    }).join('\n') : '  （没有）';
+    var other = files.length - cs.length;
+    if (other > 0) {
+      text += '\n\n其他 ' + other + ' 个文件：\n' + files
+        .filter(function (f) { return !/\.(cs|pro)$/i.test(f.name); })
+        .slice(0, 15).map(function (f) { return '  ' + describe(f); }).join('\n');
+    }
+    text += '\n\n' + (files.length > 0 ? '✅ 能一次列出目录 —— 「脚本清单」可行。' : '⚠️ 没列出文件。');
+    $('outDir').textContent = text;
+  });
+  attached['pickDir.change'] = true;
+
+  // ---- 3. drag & drop, whole page -----------------------------------------
+  //
+  // 三条路，按可靠性从高到低：
+  //   1) dataTransfer.files        —— 拖"文件"时的正解，最简单最稳
+  //   2) getAsFileSystemHandle()   —— 现代 API，拖"文件夹"时用；句柄来自用户拖放，
+  //                                   不受 showDirectoryPicker 那个 sandbox 限制
+  //   3) webkitGetAsEntry()        —— 老 API，只在 2) 不可用时兜底
+  //
+  // 上一版只有 3)，而实测它的 FileSystemFileEntry 在异步回调里会失效、
+  // 目录 readEntries 也返回空，所以"拖文件夹"始终拿到 0 个文件。
+  var dragDepth = 0;
+  var hint = $('pageDropHint');
+  var dropBox = $('drop');
+
+  document.addEventListener('dragenter', function (e) {
+    e.preventDefault();
+    dragDepth++;
+    hint.classList.add('on');
+    dropBox.classList.add('over');
+    attached['document.dragover'] = true;
+  });
+  document.addEventListener('dragover', function (e) {
+    e.preventDefault();                 // 必须 prevent，否则浏览器拒绝 drop
+    try { e.dataTransfer.dropEffect = 'copy'; } catch (err) { /* 忽略 */ }
+    attached['document.dragover'] = true;
+  });
+  document.addEventListener('dragleave', function (e) {
+    e.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) { hint.classList.remove('on'); dropBox.classList.remove('over'); }
+  });
+
+  // 现代：递归遍历一个 FileSystemHandle
+  async function collectFromHandle(handle) {
+    if (!handle) return [];
+    if (handle.kind === 'file') {
+      try { return [await handle.getFile()]; } catch (err) { return []; }
+    }
+    var out = [];
+    try {
+      for await (var sub of handle.values()) {
+        var got = await collectFromHandle(sub);
+        out = out.concat(got);
+      }
+    } catch (err) { /* 目录读不了就返回已拿到的 */ }
+    return out;
+  }
+
+  // 老 API：递归遍历 FileSystemEntry
+  function walkEntry(entry) {
+    return new Promise(function (resolve) {
+      try {
+        if (entry.isFile) {
+          entry.file(function (f) { resolve([f]); }, function () { resolve([]); });
+        } else if (entry.isDirectory) {
+          var reader = entry.createReader();
+          var all = [];
+          (function next() {
+            reader.readEntries(function (entries) {
+              if (!entries.length) {
+                Promise.all(all.map(walkEntry)).then(function (lists) {
+                  var flat = [];
+                  lists.forEach(function (l) { flat = flat.concat(l); });
+                  resolve(flat);
+                }, function () { resolve([]); });
+                return;
+              }
+              all = all.concat(Array.prototype.slice.call(entries));
+              next();          // readEntries 每次最多 100 条，要循环读到空
+            }, function () { resolve([]); });
+          })();
+        } else {
+          resolve([]);
+        }
+      } catch (err) { resolve([]); }
+    });
+  }
+
+  document.addEventListener('drop', function (e) {
+    e.preventDefault();
+    attached['document.drop'] = true; renderSelfCheck();
+    dragDepth = 0; hint.classList.remove('on'); dropBox.classList.remove('over');
+
+    var out = $('outDrop');
+    out.textContent = '【拖拽】收到 drop 事件，正在处理…';
+
+    var dt = e.dataTransfer;
+    var items = dt && dt.items ? Array.prototype.slice.call(dt.items) : [];
+    var rawFiles = dt && dt.files ? Array.prototype.slice.call(dt.files) : [];
+
+    // 拖动"文件夹"时 dataTransfer.files 里那一项代表文件夹本身（名字=文件夹名、size=0）。
+    function looksLikeFolderPlaceholder(f) {
+      return f.size === 0 && f.name.indexOf('.') === -1;
+    }
+    var plainFiles = rawFiles.filter(function (f) { return !looksLikeFolderPlaceholder(f); });
+
+    var handlePromises = [];
+    var modernSupported = false;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].kind !== 'file') continue;
+      if (typeof items[i].getAsFileSystemHandle === 'function') {
+        modernSupported = true;
+        try { handlePromises.push(items[i].getAsFileSystemHandle()); }
+        catch (err) { handlePromises.push(Promise.resolve(null)); }
+      }
+    }
+
+    var head = '【拖拽】诊断\n' +
+      'dataTransfer.items    : ' + items.length + ' 项\n' +
+      'dataTransfer.files    : ' + rawFiles.length +
+        ' 项（剔除文件夹占位后 ' + plainFiles.length + '）\n' +
+      'getAsFileSystemHandle : ' + (modernSupported ? '支持（优先使用）' : '不支持') + '\n\n';
+
+    // 路 1：直接用 files —— 拖文件时的正解，先做，避免无谓绕道
+    if (plainFiles.length > 0) {
+      readAndShow(plainFiles, out, head + '【用 dataTransfer.files】');
+      return;
+    }
+
+    // 路 2：现代句柄 API
+    if (handlePromises.length) {
+      Promise.all(handlePromises).then(function (handles) {
+        var desc = handles.map(function (h) {
+          return h ? (h.name + ' [' + h.kind + ']') : 'null';
+        }).join(' | ');
+
+        var jobs = handles.filter(Boolean).map(collectFromHandle);
+        if (!jobs.length) {
+          out.textContent = head + '句柄结果：' + desc +
+            '\n\n⚠️ 没拿到可用句柄。请改用第 2 节按钮或第 4 节选目录。';
+          return;
+        }
+
+        Promise.all(jobs).then(function (lists) {
+          var flat = [];
+          lists.forEach(function (l) { flat = flat.concat(l); });
+          var detail = '句柄结果：' + desc + '\n遍历得到 ' + flat.length + ' 个文件\n\n';
+          if (flat.length === 0) {
+            out.textContent = head + detail +
+              '⚠️ 现代 API 也没遍历出文件（说明这个环境限制了拖入文件夹的读取，不是代码问题）。\n' +
+              '→ 请用第 4 节【选择一个目录】按钮，那个已验证可用。';
+            return;
+          }
+          readAndShow(flat, out, head + detail + '【现代 API · 文件夹】');
+        }, function () {
+          out.textContent = head + '句柄结果：' + desc + '\n\n⚠️ 遍历句柄时出错。请用第 4 节按钮。';
+        });
+      }, function () {
+        out.textContent = head + '⚠️ 取句柄失败。请用第 4 节按钮。';
+      });
+      return;
+    }
+
+    // 路 3：老 API 兜底
+    var entries = [];
+    var trace = [];
+    for (var j = 0; j < items.length; j++) {
+      if (items[j].kind !== 'file') continue;
+      if (typeof items[j].webkitGetAsEntry === 'function') {
+        try {
+          var en = items[j].webkitGetAsEntry();
+          if (en) { entries.push(en); trace.push(en.name + (en.isDirectory ? ' [目录]' : ' [文件]')); }
+          else { trace.push('(返回 null)'); }
+        } catch (err) { trace.push('(抛异常 ' + err.name + ')'); }
+      }
+    }
+    head += '入口条目（老 API）: ' + (trace.length ? trace.join(' | ') : '（无）') + '\n\n';
+
+    if (!entries.length) {
+      out.textContent = head + '⚠️ 这次拖拽没有带来可用文件。请用第 2 节按钮或第 4 节选目录。';
+      return;
+    }
+
+    Promise.all(entries.map(walkEntry)).then(function (lists) {
+      var flat = [];
+      lists.forEach(function (l) { flat = flat.concat(l); });
+      if (flat.length === 0) {
+        out.textContent = head +
+          '⚠️ 老 API 也没遍历出文件。\n' +
+          '→ 请用第 4 节【选择一个目录】按钮（已验证可用），或直接拖 .cs 文件。';
+        return;
+      }
+      readAndShow(flat, out, head + '【老 API · 文件夹】');
+    }, function () {
+      out.textContent = head + '⚠️ 老 API 遍历出错。请用第 4 节按钮。';
+    });
+  });
+  attached['document.dragover'] = true;
+  attached['document.drop'] = true;
+
+  // ---- 5. three export paths ----------------------------------------------
+  var SAMPLE = [
+    '// probe-test.cs —— 由探测页生成，可删除',
+    'using System;',
+    'using DynamicPatcher;',
+    'using Extension.Ext;',
+    'using Extension.Script;',
+    'using Extension.Utilities;',
+    'using PatcherYRpp;',
+    'using PatcherYRpp.Utilities;',
+    '',
+    'namespace Scripts',
+    '{',
+    '    public class ProbeTest : TechnoScriptable',
+    '    {',
+    '        public ProbeTest(TechnoExt owner) : base(owner) { }',
+    '',
+    '        public override void OnUpdate()',
+    '        {',
+    '            /* TODO */',
+    '        }',
+    '    }',
+    '}',
+    ''
+  ].join('\n');
+
+  $('dl').addEventListener('click', function () {
+    var out = $('outDl');
+    try {
+      var blob = new Blob([SAMPLE], { type: 'text/plain;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'probe-test.cs';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 3000);
+      out.textContent = '✅ 已触发下载 probe-test.cs（' + SAMPLE.length + ' 字符）。\n\n' +
+        '请检查两处：\n' +
+        '  1. 浏览器下载目录里有没有这个文件\n' +
+        '  2. 地址栏附近有没有"已阻止下载"的提示\n\n' +
+        '⚠️ 若这段文字出现了、但文件没出现，那是浏览器拦了下载，与代码无关；\n' +
+        '   请改用 B 或 C（不需要下载权限）。';
+    } catch (err) {
+      out.textContent = '❌ 下载代码抛异常：' + err.name + ': ' + err.message +
+        '\n\n→ 这是我的代码问题，不是浏览器拦截。请用 B / C。';
+    }
+  });
+  attached['dl.click'] = true;
+
+  $('copy').addEventListener('click', function () {
+    var out = $('outDl');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(SAMPLE).then(function () {
+        out.textContent = '✅ 已复制 ' + SAMPLE.length + ' 字符到剪贴板（不依赖下载权限）。';
+      }, function (err) {
+        out.textContent = '⚠️ 剪贴板写入被拒：' + err.name + '\n已把代码放进下面的文本框，请用 C。';
+        $('codeBox').value = SAMPLE;
+      });
+    } else {
+      out.textContent = '⚠️ 这个浏览器没有 clipboard API。已把代码放进下面的文本框，请用 C。';
+      $('codeBox').value = SAMPLE;
+    }
+  });
+  attached['copy.click'] = true;
+
+  $('show').addEventListener('click', function () {
+    var box = $('codeBox');
+    box.value = SAMPLE;
+    box.focus();
+    box.select();
+    $('outDl').textContent = '✅ 代码已放进下面的文本框并全选。按 Ctrl+C 复制。\n' +
+      '这条路不需要任何权限，**永远可用** —— 「保存修改」有保底。';
+  });
+  attached['show.click'] = true;
+
+  // ---- 6. directory handle: can we read AND write the folder directly? ----
+  var dirHandle = null;
+
+  function listDirHandle(h) {
+    var names = [];
+    return (async function () {
+      for await (var entry of h.values()) {
+        var size = '';
+        if (entry.kind === 'file') {
+          try { size = '  (' + (await entry.getFile()).size + ' B)'; } catch (err) { size = '  (读不到)'; }
+        }
+        names.push('  ' + entry.name + (entry.kind === 'directory' ? '  [目录]' : '') + size);
+      }
+      return names;
+    })();
+  }
+
+  $('pickDirHandle').addEventListener('click', function () {
+    var out = $('outFolder');
+    if (typeof window.showDirectoryPicker !== 'function') {
+      out.textContent = '❌ 这个环境没有 showDirectoryPicker。';
+      return;
+    }
+    out.textContent = '正在等待目录选择…';
+    window.showDirectoryPicker({ id: 'karst-scripts', mode: 'readwrite' }).then(function (h) {
+      dirHandle = h;
+      return listDirHandle(h).then(function (names) {
+        return h.queryPermission({ mode: 'readwrite' }).then(function (perm) {
+          out.textContent = '✅ showDirectoryPicker 可用！\n' +
+            '目录：' + h.name + '   写权限：' + perm + '\n\n' +
+            '内容（' + names.length + ' 项）：\n' + (names.join('\n') || '  （空）') + '\n\n' +
+            '→ 方案 A（页面直接读写目录）可行。请再点「测试写入」确认写权限。';
+        });
+      });
+    }, function (err) {
+      out.textContent = '❌ showDirectoryPicker 失败：' + err.name + '\n  ' + err.message + '\n\n' +
+        (err.name === 'SecurityError'
+          ? '→ 若你是在内嵌预览里打开的，请改用独立浏览器窗口重试。'
+          : '→ 若在独立浏览器里仍失败，那这条路确实不通，用复制粘贴方案。');
+    });
+  });
+
+  $('writeTest').addEventListener('click', function () {
+    var out = $('outFolder');
+    if (!dirHandle) { out.textContent = '⚠️ 请先用上面两个按钮之一选一个目录。'; return; }
+    out.textContent = '正在测试写入…';
+    (async function () {
+      var name = '__karst_write_test.tmp';
+      try {
+        var fh = await dirHandle.getFileHandle(name, { create: true });
+        var w = await fh.createWritable();
+        await w.write('karst write test\n');
+        await w.close();
+        var size = (await fh.getFile()).size;
+        await dirHandle.removeEntry(name);
+        out.textContent = '✅ 写入成功，并可删除\n' +
+          '  建立：' + name + '（写入 ' + size + ' 字节）\n' +
+          '  删除：已清理，目录里没有残留\n\n' +
+          '→ 方案 A 完全可行：页面能直接保存脚本，不需要复制粘贴，也不需要服务。';
+      } catch (err) {
+        out.textContent = '❌ 写入失败：' + err.name + '\n  ' + err.message + '\n\n' +
+          '→ 只读可用、写入不可用。产品需要退回"复制粘贴"保存。';
+        try { await dirHandle.removeEntry(name); } catch (e2) { /* 清不掉就算了 */ }
+      }
+    })();
+  });
+
+  renderSelfCheck();
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,20 @@
+[
+  {
+    "file": "StudioDemoLog.cs",
+    "cls": "StudioDemoLog",
+    "binding": "MTNK",
+    "why": "入门：每 60 帧在日志里打一次自己的坐标和血量"
+  },
+  {
+    "file": "StudioDemoMissileRain.cs",
+    "cls": "StudioDemoMissileRain",
+    "binding": "MTNK",
+    "why": "进阶：开火时记住目标，之后每 15 帧对目标砸一发范围伤害（等价于手写的 MissileRain）"
+  },
+  {
+    "file": "StudioDemoArmor.cs",
+    "cls": "StudioDemoArmor",
+    "binding": "MTNK",
+    "why": "条件组合：受伤减半；血量低于 30% 时每 30 帧有 25% 概率在自己脚下引爆"
+  }
+]

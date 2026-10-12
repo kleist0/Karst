@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Karst 脚本编辑器</title>
+<style>
+  :root { --bg:#1e2228; --panel:#272c34; --line:#3a414b; --fg:#e6e9ee; --dim:#9aa4b2;
+          --accent:#4a9eff; --ok:#3fb950; --warn:#d29922; --err:#f85149; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.6 "Segoe UI","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--fg); }
+  header { padding:14px 20px; background:var(--panel); border-bottom:1px solid var(--line);
+           display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:17px; font-weight:600; }
+  header .hint { color:var(--dim); font-size:12px; }
+  main { display:grid; grid-template-columns: minmax(420px,1fr) minmax(380px,1fr);
+         gap:16px; padding:16px; align-items:start; }
+  @media (max-width:1000px) { main { grid-template-columns:1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }
+  .panel h2 { margin:0 0 10px; font-size:14px; color:var(--dim); font-weight:600;
+              text-transform:uppercase; letter-spacing:.04em; }
+  .script { border:1px solid var(--line); border-radius:6px; padding:12px; margin-bottom:12px;
+            background:#22262d; }
+  .script .top { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
+  .script .top .grow { flex:1; }
+  label { display:block; font-size:12px; color:var(--dim); margin:8px 0 3px; }
+  input, select, textarea { width:100%; padding:6px 8px; background:#1a1e24; color:var(--fg);
+        border:1px solid var(--line); border-radius:4px; font:inherit; }
+  select[multiple] { height:130px; }
+  button { padding:6px 12px; background:var(--accent); color:#fff; border:0; border-radius:4px;
+           font:inherit; cursor:pointer; }
+  button.sec { background:#3a414b; }
+  button.del { background:#5a2a2a; }
+  button:hover { filter:brightness(1.15); }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  pre { margin:0; padding:12px; background:#14171b; border:1px solid var(--line);
+        border-radius:6px; overflow:auto; max-height:420px; font:12px/1.5 Consolas,monospace;
+        white-space:pre-wrap; word-break:break-all; }
+  .status { margin-top:10px; padding:8px 10px; border-radius:4px; font-size:12px; display:none; }
+  .status.show { display:block; }
+  .status.ok { background:#14331c; color:#7ee787; }
+  .status.err { background:#3a1a1a; color:#ff9b95; }
+  .status.warn { background:#3a3218; color:#f0d070; }
+  .pair { border:1px dashed var(--line); border-radius:4px; padding:8px; margin-bottom:6px; }
+  .pair .row { align-items:center; }
+  .pair label { margin:0 0 2px; }
+  .muted { color:var(--dim); font-size:12px; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  details.data { margin-top:14px; }
+  details.data summary { cursor:pointer; color:var(--dim); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Karst 脚本编辑器</h1>
+  <span class="hint">填表 → 生成 JSON → 保存到 <code>Karst\scripts\</code>（游戏中保存即时生效）</span>
+  <span class="hint" id="stamp"><!--__STAMP__--></span>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>脚本</h2>
+    <div id="list"></div>
+    <div class="actions">
+      <button id="add">+ 添加脚本</button>
+      <button class="sec" id="load">载入现有文件</button>
+      <input type="file" id="file" accept=".jsonc,.json,.txt" style="display:none">
+    </div>
+
+    <details class="data">
+      <summary>参考数据（来自游戏的规则文件）</summary>
+      <p class="muted">建筑 <span id="bcount">0</span> 项，ART 段 <span id="acount">0</span> 项。
+         <code>building</code> 用建筑 ID，<code>look</code> 用 ART 段名。</p>
+      <label>搜索</label>
+      <input id="search" placeholder="输入几个字母过滤，例如 gapowr">
+      <div id="searchOut" class="muted"></div>
+    </details>
+
+    <!-- ================= C# 脚本骨架生成 ================= -->
+    <details class="data" id="csSection">
+      <summary>C# 脚本骨架（进阶：给会写代码的人）</summary>
+      <p class="muted">
+        生成一个可直接放进 <code>KarstPatcher\Scripts\</code> 的 <code>.cs</code>。
+        它只是骨架——把每个事件里的 <code>/* TODO */</code> 换成你的逻辑即可。
+      </p>
+
+      <label>类名（也是 rulesmd.ini 里 Scripts= 的值）</label>
+      <input id="csClass" value="MyScript" placeholder="MyScript">
+
+      <label>要处理的事件</label>
+      <div id="csEvents">
+        <label><input type="checkbox" value="OnUpdate" checked> OnUpdate —— 每帧</label>
+        <label><input type="checkbox" value="OnFire"> OnFire —— 开火时</label>
+        <label><input type="checkbox" value="OnReceiveDamage"> OnReceiveDamage —— 受伤时</label>
+        <label><input type="checkbox" value="OnPut"> OnPut —— 出场时</label>
+        <label><input type="checkbox" value="OnRemove"> OnRemove —— 被移除时</label>
+      </div>
+
+      <label>顺便生成的绑定行（贴到 rulesmd.ini 对应单位段里）</label>
+      <input id="csBinding" value="[MTNK]" placeholder="[MTNK]">
+
+      <div class="actions">
+        <button id="csBuild">生成 .cs</button>
+        <button class="sec" id="csDownload">下载 .cs</button>
+      </div>
+      <p class="muted" id="csHint"></p>
+    </details>
+  </section>
+
+  <section class="panel">
+    <h2>生成的 JSON</h2>
+    <pre id="out"></pre>
+    <div id="status" class="status"></div>
+    <div class="actions">
+      <button id="copy">复制</button>
+      <button class="sec" id="download">下载 appearance.jsonc</button>
+      <button class="sec" id="saveAs">保存到文件夹…</button>
+    </div>
+    <p class="muted" id="saveHint"></p>
+  </section>
+</main>
+
+<script>
+// --- data injected at build time -------------------------------------------
+const BUILDINGS = [/*__BUILDINGS__*/];
+const ARTS = [/*__ARTS__*/];
+
+// --- state -----------------------------------------------------------------
+let scripts = [];
+
+const el = id => document.getElementById(id);
+
+function status(kind, text) {
+  const s = el('status');
+  s.className = 'status show ' + kind;
+  s.textContent = text;
+}
+
+function clearStatus() { el('status').className = 'status'; }
+
+// --- rendering -------------------------------------------------------------
+function optionList(values, selected) {
+  const out = ['<option value=""></option>'];
+  for (const v of values) {
+    out.push('<option value="' + v + '"' + (v === selected ? ' selected' : '') + '>' + v + '</option>');
+  }
+  return out.join('');
+}
+
+function render() {
+  const host = el('list');
+  host.innerHTML = '';
+
+  if (scripts.length === 0) {
+    host.innerHTML = '<p class="muted">还没有脚本。点下面的“添加脚本”。</p>';
+  }
+
+  scripts.forEach((s, i) => {
+    const box = document.createElement('div');
+    box.className = 'script';
+
+    const byCountry = s.mode === 'byCountry';
+    let pairs = '';
+
+    if (byCountry) {
+      const rows = (s.byCountry || []).map((p, j) => `
+        <div class="pair">
+          <div class="row">
+            <div>
+              <label>国家</label>
+              <select data-f="country" data-i="${i}" data-j="${j}">${optionList(s._countries || [], p.country)}</select>
+            </div>
+            <div>
+              <label>ART 段</label>
+              <select data-f="section" data-i="${i}" data-j="${j}">${optionList(ARTS, p.section)}</select>
+            </div>
+            <div style="flex:0 0 auto; display:flex; align-items:flex-end">
+              <button class="del" data-act="rmpair" data-i="${i}" data-j="${j}">×</button>
+            </div>
+          </div>
+        </div>`).join('');
+
+      pairs = rows + `<button class="sec" data-act="addpair" data-i="${i}">+ 加一个国家</button>`;
+    }
+
+    box.innerHTML = `
+      <div class="top">
+        <strong class="grow">脚本 ${i + 1}</strong>
+        <button class="del" data-act="del" data-i="${i}">删除</button>
+      </div>
+
+      <label>说明（可选，只写在文件里，不影响功能）</label>
+      <input data-f="name" data-i="${i}" value="${s.name || ''}">
+
+      <label>被改的建筑（类型 ID）</label>
+      <select data-f="building" data-i="${i}">${optionList(BUILDINGS, s.building)}</select>
+      <input data-f="buildingFree" data-i="${i}" value="${s.buildingFree || ''}"
+             placeholder="或直接手写 ID（例如只在 artmd 里出现的段名）">
+
+      <label>外观怎么定</label>
+      <select data-f="mode" data-i="${i}">
+        <option value="look"${byCountry ? '' : ' selected'}>所有人同一个外观（look）</option>
+        <option value="byCountry"${byCountry ? ' selected' : ''}>按拥有者国家不同（byCountry）</option>
+      </select>
+
+      ${byCountry ? `
+        <label>每个国家用哪个 ART 段</label>
+        ${pairs}
+      ` : `
+        <label>外观用的 ART 段（look）</label>
+        <select data-f="look" data-i="${i}">${optionList(ARTS, s.look)}</select>
+        <input data-f="lookFree" data-i="${i}" value="${s.lookFree || ''}"
+               placeholder="或直接手写段名">
+
+        <label>占地</label>
+        <select data-f="footprint" data-i="${i}">
+          <option value="follow"${s.footprint === 'self' ? '' : ' selected'}>跟随外观（推荐，默认）</option>
+          <option value="self"${s.footprint === 'self' ? ' selected' : ''}>保持原样（只换外观）</option>
+        </select>
+      `}
+    `;
+    host.appendChild(box);
+  });
+
+  update();
+}
+
+// --- the generated document ------------------------------------------------
+function build() {
+  const out = [];
+  for (const s of scripts) {
+    const id = (s.buildingFree || s.building || '').trim();
+    if (!id) continue;
+
+    const o = { type: 'appearance', building: id };
+    if (s.name) o.name = s.name;
+
+    if (s.mode === 'byCountry') {
+      const map = {};
+      for (const p of (s.byCountry || [])) {
+        if (p.country && p.section) map[p.country] = p.section;
+      }
+      if (Object.keys(map).length === 0) continue;
+      o.byCountry = map;
+    } else {
+      const look = (s.lookFree || s.look || '').trim();
+      if (!look) continue;
+      o.look = look;
+      if (s.footprint === 'self') o.foundationFrom = 'self';
+    }
+
+    out.push(o);
+  }
+  return out;
+}
+
+function update() {
+  const arr = build();
+  const text = JSON.stringify({ scripts: arr }, null, 2);
+  el('out').textContent = text;
+
+  // Local validation: the same rules the loader applies.
+  const problems = [];
+  const used = new Map();
+  for (const s of arr) {
+    const n = (used.get(s.building) || 0) + 1;
+    used.set(s.building, n);
+    if (n === 2) problems.push('建筑 ' + s.building + ' 在本页出现了两次（只有第一个会生效）');
+  }
+  if (arr.length === 0) problems.push('还没有可生成的脚本（要选建筑 + 外观）');
+
+  if (problems.length) status('warn', problems.join('；') + '。检查后再保存。');
+  else status('ok', '看起来没问题：' + arr.length + ' 个脚本。');
+}
+
+// --- data loading (for the reference lists) --------------------------------
+async function loadLists() {
+  // The lists are embedded; this only fills the counters and the search box.
+  el('bcount').textContent = BUILDINGS.length;
+  el('acount').textContent = ARTS.length;
+
+  el('search').addEventListener('input', ev => {
+    const q = ev.target.value.trim().toUpperCase();
+    if (!q) { el('searchOut').textContent = ''; return; }
+    const hit = (arr, kind) => arr.filter(v => v.toUpperCase().includes(q)).slice(0, 30)
+      .map(v => '<code>' + v + '</code>').join(' ');
+    el('searchOut').innerHTML =
+      '<div><b>建筑</b>: ' + (hit(BUILDINGS, 'b') || '<span class="muted">无</span>') + '</div>' +
+      '<div><b>ART 段</b>: ' + (hit(ARTS, 'a') || '<span class="muted">无</span>') + '</div>';
+  });
+}
+
+// --- events ----------------------------------------------------------------
+el('add').addEventListener('click', () => {
+  scripts.push({
+    mode: 'look', building: '', look: '', footprint: 'follow',
+    byCountry: [{ country: '', section: '' }],
+    _countries: ['Americans', 'Alliance', 'French', 'Germans', 'British',
+                 'Russians', 'Confederation', 'Africans', 'Arabs', 'YuriCountry']
+  });
+  render();
+});
+
+el('list').addEventListener('input', onEdit);
+el('list').addEventListener('change', onEdit);
+
+function onEdit(ev) {
+  const t = ev.target;
+  const f = t.dataset.f;
+  if (!f) return;
+  const i = +t.dataset.i;
+  const s = scripts[i];
+  if (!s) return;
+
+  if (f === 'country' || f === 'section') {
+    const j = +t.dataset.j;
+    s.byCountry[j][f] = t.value;
+  } else if (f === 'mode') {
+    s.mode = t.value;
+    render();          // the form shape changes
+    return;
+  } else {
+    s[f] = t.value;
+  }
+  update();
+}
+
+el('list').addEventListener('click', ev => {
+  const act = ev.target.dataset.act;
+  if (!act) return;
+  const i = +ev.target.dataset.i;
+
+  if (act === 'del') { scripts.splice(i, 1); render(); }
+  else if (act === 'addpair') { scripts[i].byCountry.push({ country: '', section: '' }); render(); }
+  else if (act === 'rmpair') { scripts[i].byCountry.splice(+ev.target.dataset.j, 1); render(); }
+});
+
+el('copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(el('out').textContent);
+    status('ok', '已复制到剪贴板。粘到 Karst\\scripts\\ 下的 .jsonc 文件即可。');
+  } catch (e) {
+    status('err', '复制失败（浏览器可能不允许）：' + e.message);
+  }
+});
+
+el('download').addEventListener('click', () => {
+  const blob = new Blob([el('out').textContent], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'appearance.jsonc';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  status('ok', '已下载。把它放进 Karst\\scripts\\ 即可。');
+});
+
+el('saveAs').addEventListener('click', async () => {
+  if (!window.showSaveFilePicker) {
+    status('warn', '这个浏览器不支持“直接保存到文件夹”，请用上面的下载按钮。');
+    return;
+  }
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: 'appearance.jsonc',
+      types: [{ description: 'Karst 脚本', accept: { 'application/json': ['.jsonc'] } }]
+    });
+    const w = await handle.createWritable();
+    await w.write(el('out').textContent);
+    await w.close();
+    status('ok', '已保存。游戏里保存即生效（改的是 look 就立刻能用）。');
+  } catch (e) {
+    if (e.name !== 'AbortError') status('err', '保存失败：' + e.message);
+  }
+});
+
+el('load').addEventListener('click', () => el('file').click());
+
+el('file').addEventListener('change', async ev => {
+  const f = ev.target.files[0];
+  if (!f) return;
+  try {
+    let text = await f.text();
+    // The format allows comments and trailing commas; strip them for JSON.parse.
+    text = text.replace(/\/\*[\s\S]*?\*\//g, '')
+               .replace(/(^|[^:])\/\/.*$/gm, '$1')
+               .replace(/,(\s*[}\]])/g, '$1');
+    const doc = JSON.parse(text);
+    const list = Array.isArray(doc) ? doc : (doc.scripts || [doc]);
+    scripts = list.map(o => {
+      const s = {
+        mode: o.byCountry ? 'byCountry' : 'look',
+        building: BUILDINGS.includes(o.building) ? o.building : '',
+        buildingFree: BUILDINGS.includes(o.building) ? '' : (o.building || ''),
+        name: o.name || '',
+        look: ARTS.includes(o.look) ? o.look : '',
+        lookFree: ARTS.includes(o.look) ? '' : (o.look || ''),
+        footprint: o.foundationFrom === 'self' ? 'self' : 'follow',
+        byCountry: o.byCountry
+          ? Object.entries(o.byCountry).map(([k, v]) => ({ country: k, section: v }))
+          : [{ country: '', section: '' }],
+        _countries: ['Americans', 'Alliance', 'French', 'Germans', 'British',
+                     'Russians', 'Confederation', 'Africans', 'Arabs', 'YuriCountry']
+      };
+      return s;
+    });
+    render();
+    status('ok', '已载入 ' + scripts.length + ' 个脚本。');
+  } catch (e) {
+    status('err', '载入失败：' + e.message);
+  }
+  ev.target.value = '';
+});
+
+// --- C# skeleton generator -------------------------------------------------
+//
+// The JSON editor above covers "appearance" scripts. Everything else (per-frame
+// logic, firing, damage, ...) needs real C#, so this emits a compilable skeleton
+// with only the chosen events overridden.
+//
+// The using list is deliberately complete and commented: the first version of
+// this project's docs shipped examples missing
+//   Extension.Utilities      (ExtensionReference)
+//   PatcherYRpp.Utilities    (MathEx)
+// and they failed to compile when actually dropped into the game.
+
+const CS_EVENTS = {
+  OnUpdate: {
+    sig: 'public override void OnUpdate()',
+    body: '// 每帧调用。'
+  },
+  OnFire: {
+    sig: 'public override void OnFire(Pointer<AbstractClass> pTarget, int weaponIndex)',
+    body: '// 开火时调用。pTarget 是目标，weaponIndex 是武器序号。'
+  },
+  OnReceiveDamage: {
+    sig: 'public override void OnReceiveDamage(Pointer<int> pDamage, int distanceFromEpicenter,\n'
+       + '            Pointer<WarheadTypeClass> pWH, Pointer<ObjectClass> pAttacker, bool ignoreDefenses,\n'
+       + '            bool preventPassengerEscape, Pointer<HouseClass> pAttackingHouse)',
+    body: '// 受伤时调用。pDamage 指向伤害值（改它可以改伤害）。'
+  },
+  OnPut: {
+    sig: 'public override void OnPut(CoordStruct coord, Direction faceDir)',
+    body: '// 单位出现在世界上时调用一次。'
+  },
+  OnRemove: {
+    sig: 'public override void OnRemove()',
+    body: '// 单位被移除时调用。'
+  }
+};
+
+function buildCs() {
+  const cls = (el('csClass').value || 'MyScript').trim().replace(/[^A-Za-z0-9_]/g, '');
+  const name = cls || 'MyScript';
+
+  const picked = Array.from(document.querySelectorAll('#csEvents input:checked'))
+    .map(x => x.value);
+
+  let methods = '';
+  for (const key of picked) {
+    const ev = CS_EVENTS[key];
+    if (!ev) continue;
+    methods += '\n        ' + ev.sig + '\n'
+             + '        {\n'
+             + '            ' + ev.body + '\n'
+             + '            /* TODO: 你的逻辑 */\n'
+             + '        }\n';
+  }
+
+  if (!methods) methods = '\n        // 没有勾选任何事件。\n';
+
+  return '// 由 Karst 脚本编辑器生成\n'
+       + '// 放到 <游戏目录>\\KarstPatcher\\Scripts\\ 下即可\n'
+       + '\n'
+       + 'using System;\n'
+       + 'using DynamicPatcher;            // Logger\n'
+       + 'using Extension.Ext;             // TechnoExt\n'
+       + 'using Extension.Script;          // TechnoScriptable\n'
+       + 'using Extension.Utilities;       // ExtensionReference（保存别的对象时要用）\n'
+       + 'using PatcherYRpp;               // Pointer<T>、CoordStruct 等\n'
+       + 'using PatcherYRpp.Utilities;     // MathEx（随机数等）\n'
+       + '\n'
+       + 'namespace Scripts\n'
+       + '{\n'
+       + '    public class ' + name + ' : TechnoScriptable\n'
+       + '    {\n'
+       + '        public ' + name + '(TechnoExt owner) : base(owner) { }\n'
+       + methods
+       + '    }\n'
+       + '}\n';
+}
+
+function updateCs() {
+  const code = buildCs();
+  el('out').textContent = code;
+
+  const binding = (el('csBinding').value || '').trim();
+  const cls = (el('csClass').value || 'MyScript').trim().replace(/[^A-Za-z0-9_]/g, '');
+
+  const problems = [];
+  if (!cls) problems.push('类名不能为空');
+
+  if (problems.length) status('warn', problems.join('；'));
+  else status('ok', '骨架已生成。绑定行：' + (binding ? binding + ' Scripts=' + cls : '（未填单位段）'));
+}
+
+el('csBuild').addEventListener('click', updateCs);
+el('csClass').addEventListener('input', updateCs);
+document.querySelectorAll('#csEvents input').forEach(x => x.addEventListener('change', updateCs));
+
+el('csDownload').addEventListener('click', () => {
+  const cls = (el('csClass').value || 'MyScript').trim().replace(/[^A-Za-z0-9_]/g, '') || 'MyScript';
+  const blob = new Blob([buildCs()], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = cls + '.cs';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  status('ok', '已下载 ' + cls + '.cs —— 放进 KarstPatcher\\Scripts\\ 即可。');
+});
+
+// --- start -----------------------------------------------------------------
+loadLists();
+scripts.push({
+  mode: 'look', building: '', look: '', footprint: 'follow',
+  byCountry: [{ country: '', section: '' }],
+  _countries: ['Americans', 'Alliance', 'French', 'Germans', 'British',
+               'Russians', 'Confederation', 'Africans', 'Arabs', 'YuriCountry']
+});
+render();
+
+if (!window.showSaveFilePicker) {
+  el('saveHint').textContent = '提示：这个浏览器不支持“保存到文件夹”，用“下载”然后手动放进 Karst\\scripts\\。';
+}
+</script>
+</body>
+</html>

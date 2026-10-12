@@ -1,0 +1,89 @@
+// ===========================================================================
+//  Appearance scripts - examples and reference
+// ===========================================================================
+//  Put this file (or your own) in the scripts directory named by
+//  karst.scripts.ini, then save: Karst reloads scripts while the game runs.
+//
+//  An appearance script says "draw this building as another one". Two shapes:
+//
+//    byCountry  - a different look per OWNING country (like ShowByCountries)
+//    look       - one look for everybody (like ShowByArt)
+//
+//  Nothing is drawn by Karst itself: it only decides which ART section the
+//  engine parses, so the image, the animations, the palette and the footprint
+//  all still come from the engine.
+// ===========================================================================
+
+{
+  "scripts": [
+
+    // -----------------------------------------------------------------------
+    // A different look per owning country.
+    //
+    // The Allied power plant stays GAPOWR (cost, health, prerequisites are
+    // unchanged) but is DRAWN as the Yuri power plant when an American owns it,
+    // and as the Soviet one when the Korean (Alliance) side owns it. A country
+    // that is not listed keeps the original art.
+    // -----------------------------------------------------------------------
+    {
+      "id": "allied-power-look",
+      "name": "Allied power plant per country",
+      "type": "appearance",
+      "building": "GAPOWR",
+      "byCountry": {
+        "Americans": "YAPOWR",
+        "Alliance":  "NAPOWR"
+      }
+    },
+
+    // -----------------------------------------------------------------------
+    // The same for the construction yard.
+    // -----------------------------------------------------------------------
+    {
+      "id": "allied-yard-look",
+      "name": "Allied construction yard per country",
+      "type": "appearance",
+      "building": "GACNST",
+      "byCountry": {
+        "Americans": "YACNST",
+        "Alliance":  "NACNST"
+      }
+    },
+
+    // -----------------------------------------------------------------------
+    // One look for everybody, keeping the building's OWN footprint.
+    //
+    // 'foundationFrom': "self" is script-only (the INI keys cannot express it):
+    // the picture changes, but the building stays placeable exactly where it was.
+    //
+    // Why that is worth having: a target section's Foundation can cover the same
+    // area in a different shape - GAPILE is 3x2 and YABRCK is 2x3, both six
+    // cells - so "just show me another picture" would otherwise also rotate
+    // where the building may be placed. Drop this line to make the footprint
+    // follow the look instead (which is what the INI's ShowByArt does).
+    //
+    // NOTE: 'building' is the type ID the game knows; 'look' is an ART section
+    // name. They are often the same string, but not always - a building can
+    // declare "Image=" and use a section whose name differs from its own ID. In
+    // that case the ART section goes in 'look' and the type ID goes in
+    // 'building'.
+    // -----------------------------------------------------------------------
+    {
+      "id": "gapile-as-barracks",
+      "name": "Allied barracks looks like the Soviet barracks",
+      "type": "appearance",
+      "building": "GAPILE",
+      "look": "YABRCK",
+      "foundationFrom": "NAHAND"
+    }
+
+    // -----------------------------------------------------------------------
+    // What does NOT work yet (deliberately, until each action is verified on a
+    // live game): event/condition/action scripts, which is how a script will do
+    // things the engine cannot do at all (react to damage, grant a super
+    // weapon, spawn a unit). The loader reports an unknown "type" with its file
+    // and line rather than ignoring it.
+    // -----------------------------------------------------------------------
+
+  ]
+}

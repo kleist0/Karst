@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{7C41E9A2-3D68-4B57-9E14-2F8A6C0D51B3}</ProjectGuid>
+    <RootNamespace>Karst</RootNamespace>
+    <ProjectName>Karst</ProjectName>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ClCompile Include="src\dllmain.cpp" />
+    <ClCompile Include="src\Karst.cpp" />
+    <ClCompile Include="src\Config\INIConfigReader.cpp" />
+    <ClCompile Include="src\Config\KarstConfig.cpp" />
+    <ClCompile Include="src\Core\Log.cpp" />
+    <ClCompile Include="src\Core\MemorySafety.cpp" />
+    <ClCompile Include="src\Ext\ShowByCountry\ShowByCountry.cpp" />
+    <!-- A separate feature: per-owning-country building art. It does not include
+         or change ShowByCountry; see src\Ext\CountryArt\CountryArt.h. -->
+    <ClCompile Include="src\Ext\CountryArt\CountryArt.cpp" />
+    <!-- A separate feature: runtime INI hot reload. Watches only the files whose
+         names are listed in karst.hotreload.ini and adds no hook of its own; see
+         src\Ext\IniHotReload\IniHotReload.h. -->
+    <ClCompile Include="src\Ext\IniHotReload\IniHotReload.cpp" />
+    <ClCompile Include="src\Ext\IniHotReload\IniReloadTarget.cpp" />
+    <ClCompile Include="src\Ext\IniHotReload\IniSnapshot.cpp" />
+    <ClCompile Include="src\Ext\IniHotReload\IniWatchThread.cpp" />
+    <!-- Scripts: user-authored JSON that configures Karst. The loader produces a
+         plain rule table and touches no engine state; see src\Script\ScriptLoader.h. -->
+    <ClCompile Include="src\Script\Json.cpp" />
+    <ClCompile Include="src\Script\ScriptLoader.cpp" />
+    <ClCompile Include="src\Script\ClrHost.cpp">
+      <!-- #import is incompatible with /MP (error C2813): it writes mscorlib.tlh
+           next to the source, and concurrent compiles would race on that file. -->
+      <MultiProcessorCompilation>false</MultiProcessorCompilation>
+    </ClCompile>
+    <!-- YRpp's static member definitions (HouseClass::Player, MessageListClass::Instance, ...).
+         This one file must be compiled, otherwise every YRpp static you reference fails to link. -->
+    <ClCompile Include="YRpp\StaticInits.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="src\Karst.h" />
+    <ClInclude Include="src\Version.h" />
+    <ClInclude Include="src\Config\INIConfigReader.h" />
+    <ClInclude Include="src\Config\KarstConfig.h" />
+    <ClInclude Include="src\Core\Log.h" />
+    <ClInclude Include="src\Core\MemorySafety.h" />
+    <ClInclude Include="src\Ext\ShowByCountry\ShowByCountry.h" />
+    <ClInclude Include="src\Ext\CountryArt\CountryArt.h" />
+    <ClInclude Include="src\Ext\IniHotReload\IniHotReload.h" />
+    <ClInclude Include="src\Ext\IniHotReload\IniReloadTarget.h" />
+    <ClInclude Include="src\Ext\IniHotReload\IniSnapshot.h" />
+    <ClInclude Include="src\Ext\IniHotReload\IniWatchThread.h" />
+    <ClInclude Include="src\Script\Json.h" />
+    <ClInclude Include="src\Script\ScriptLoader.h" />
+    <ClInclude Include="src\Script\ClrHost.h" />
+    <None Include="docs\IniHotReload.md" />
+    <None Include="tools\smoke_test.cpp" />
+    <None Include="tools\smoke_where.cpp" />
+    <None Include="tools\check_targets.cpp" />
+    <None Include="tools\check_watch.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Karst.rc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+    <CharacterSet>NotSet</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>NotSet</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+    <GenerateManifest>false</GenerateManifest>
+    <OutDir>$(Configuration)\</OutDir>
+    <IntDir>$(Configuration)\IntDir\</IntDir>
+    <IncludePath>$(SolutionDir)src;$(SolutionDir)YRpp;$(VC_IncludePath);$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+    <GenerateManifest>false</GenerateManifest>
+    <OutDir>$(Configuration)\</OutDir>
+    <IntDir>$(Configuration)\IntDir\</IntDir>
+    <IncludePath>$(SolutionDir)src;$(SolutionDir)YRpp;$(VC_IncludePath);$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <SDLCheck>false</SDLCheck>
+      <PreprocessorDefinitions>DEBUG;SYR_VER=2;HAS_EXCEPTIONS=0;NOMINMAX;_CRT_SECURE_NO_WARNINGS;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;%(PreprocessorDefinitions);%(AdditionalDefinitions);KARST_DLL="$(ProjectName).dll"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ConformanceMode>false</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AssemblerOutput>All</AssemblerOutput>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <Optimization>Disabled</Optimization>
+      <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
+      <StructMemberAlignment>8Bytes</StructMemberAlignment>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <StringPooling>true</StringPooling>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <EnforceTypeConversionRules>false</EnforceTypeConversionRules>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <DisableSpecificWarnings>4100;4201;4530;4731;4740;4458;4819;5103;5105</DisableSpecificWarnings>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>false</EnableCOMDATFolding>
+      <OptimizeReferences>false</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;dbghelp.lib;mscoree.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>false</SDLCheck>
+      <PreprocessorDefinitions>IS_RELEASE_VER;SYR_VER=2;HAS_EXCEPTIONS=0;NOMINMAX;_CRT_SECURE_NO_WARNINGS;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;%(PreprocessorDefinitions);%(AdditionalDefinitions);KARST_DLL="$(ProjectName).dll"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ConformanceMode>false</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AssemblerOutput>All</AssemblerOutput>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <Optimization>MaxSpeed</Optimization>
+      <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
+      <StructMemberAlignment>8Bytes</StructMemberAlignment>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <StringPooling>true</StringPooling>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <EnforceTypeConversionRules>false</EnforceTypeConversionRules>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <DisableSpecificWarnings>4100;4201;4530;4731;4740;4458;4819;5103;5105</DisableSpecificWarnings>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>false</EnableCOMDATFolding>
+      <OptimizeReferences>false</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;dbghelp.lib;mscoree.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

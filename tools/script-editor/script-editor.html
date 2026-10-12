@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Karst 脚本编辑器</title>
+<style>
+  :root { --bg:#1e2228; --panel:#272c34; --line:#3a414b; --fg:#e6e9ee; --dim:#9aa4b2;
+          --accent:#4a9eff; --ok:#3fb950; --warn:#d29922; --err:#f85149; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.6 "Segoe UI","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--fg); }
+  header { padding:14px 20px; background:var(--panel); border-bottom:1px solid var(--line);
+           display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:17px; font-weight:600; }
+  header .hint { color:var(--dim); font-size:12px; }
+  main { display:grid; grid-template-columns: minmax(420px,1fr) minmax(380px,1fr);
+         gap:16px; padding:16px; align-items:start; }
+  @media (max-width:1000px) { main { grid-template-columns:1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }
+  .panel h2 { margin:0 0 10px; font-size:14px; color:var(--dim); font-weight:600;
+              text-transform:uppercase; letter-spacing:.04em; }
+  .script { border:1px solid var(--line); border-radius:6px; padding:12px; margin-bottom:12px;
+            background:#22262d; }
+  .script .top { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
+  .script .top .grow { flex:1; }
+  label { display:block; font-size:12px; color:var(--dim); margin:8px 0 3px; }
+  input, select, textarea { width:100%; padding:6px 8px; background:#1a1e24; color:var(--fg);
+        border:1px solid var(--line); border-radius:4px; font:inherit; }
+  select[multiple] { height:130px; }
+  button { padding:6px 12px; background:var(--accent); color:#fff; border:0; border-radius:4px;
+           font:inherit; cursor:pointer; }
+  button.sec { background:#3a414b; }
+  button.del { background:#5a2a2a; }
+  button:hover { filter:brightness(1.15); }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  pre { margin:0; padding:12px; background:#14171b; border:1px solid var(--line);
+        border-radius:6px; overflow:auto; max-height:420px; font:12px/1.5 Consolas,monospace;
+        white-space:pre-wrap; word-break:break-all; }
+  .status { margin-top:10px; padding:8px 10px; border-radius:4px; font-size:12px; display:none; }
+  .status.show { display:block; }
+  .status.ok { background:#14331c; color:#7ee787; }
+  .status.err { background:#3a1a1a; color:#ff9b95; }
+  .status.warn { background:#3a3218; color:#f0d070; }
+  .pair { border:1px dashed var(--line); border-radius:4px; padding:8px; margin-bottom:6px; }
+  .pair .row { align-items:center; }
+  .pair label { margin:0 0 2px; }
+  .muted { color:var(--dim); font-size:12px; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  details.data { margin-top:14px; }
+  details.data summary { cursor:pointer; color:var(--dim); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Karst 脚本编辑器</h1>
+  <span class="hint">填表 → 生成 JSON → 保存到 <code>Karst\scripts\</code>（游戏中保存即时生效）</span>
+  <span class="hint" id="stamp"><!-- 数据来源：E:\_game\RA2\yr_karst_test（建筑 568 项，ART 段 1581 项） --></span>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>脚本</h2>
+    <div id="list"></div>
+    <div class="actions">
+      <button id="add">+ 添加脚本</button>
+      <button class="sec" id="load">载入现有文件</button>
+      <input type="file" id="file" accept=".jsonc,.json,.txt" style="display:none">
+    </div>
+
+    <details class="data">
+      <summary>参考数据（来自游戏的规则文件）</summary>
+      <p class="muted">建筑 <span id="bcount">0</span> 项，ART 段 <span id="acount">0</span> 项。
+         <code>building</code> 用建筑 ID，<code>look</code> 用 ART 段名。</p>
+      <label>搜索</label>
+      <input id="search" placeholder="输入几个字母过滤，例如 gapowr">
+      <div id="searchOut" class="muted"></div>
+    </details>
+
+    <!-- ================= C# 脚本骨架生成 ================= -->
+    <details class="data" id="csSection">
+      <summary>C# 脚本骨架（进阶：给会写代码的人）</summary>
+      <p class="muted">
+        生成一个可直接放进 <code>KarstPatcher\Scripts\</code> 的 <code>.cs</code>。
+        它只是骨架——把每个事件里的 <code>/* TODO */</code> 换成你的逻辑即可。
+      </p>
+
+      <label>类名（也是 rulesmd.ini 里 Scripts= 的值）</label>
+      <input id="csClass" value="MyScript" placeholder="MyScript">
+
+      <label>要处理的事件</label>
+      <div id="csEvents">
+        <label><input type="checkbox" value="OnUpdate" checked> OnUpdate —— 每帧</label>
+        <label><input type="checkbox" value="OnFire"> OnFire —— 开火时</label>
+        <label><input type="checkbox" value="OnReceiveDamage"> OnReceiveDamage —— 受伤时</label>
+        <label><input type="checkbox" value="OnPut"> OnPut —— 出场时</label>
+        <label><input type="checkbox" value="OnRemove"> OnRemove —— 被移除时</label>
+      </div>
+
+      <label>顺便生成的绑定行（贴到 rulesmd.ini 对应单位段里）</label>
+      <input id="csBinding" value="[MTNK]" placeholder="[MTNK]">
+
+      <div class="actions">
+        <button id="csBuild">生成 .cs</button>
+        <button class="sec" id="csDownload">下载 .cs</button>
+      </div>
+      <p class="muted" id="csHint"></p>
+    </details>
+  </section>
+
+  <section class="panel">
+    <h2>生成的 JSON</h2>
+    <pre id="out"></pre>
+    <div id="status" class="status"></div>
+    <div class="actions">
+      <button id="copy">复制</button>
+      <button class="sec" id="download">下载 appearance.jsonc</button>
+      <button class="sec" id="saveAs">保存到文件夹…</button>
+    </div>
+    <p class="muted" id="saveHint"></p>
+  </section>
+</main>
+
+<script>
+// --- data injected at build time -------------------------------------------
+const BUILDINGS = ["ABAN01","ABAN02","ABAN03","ABAN04","ABAN05","ABAN06","ABAN07","ABAN08","ABAN09","ABAN10","ABAN11","ABAN12","ABAN13","ABAN14","ABAN15","ABAN16","ABAN17","ABAN18","AMMO01","BBOARD01","BBOARD02","BBOARD03","BBOARD04","BBOARD05","BBOARD06","BBOARD07","BBOARD08","BBOARD09","BBOARD10","BBOARD11","BBOARD12","BBOARD13","BBOARD14","BBOARD15","BBOARD16","BOXES01","BOXES02","BOXES03","BOXES04","BOXES05","BOXES06","BOXES07","BOXES08","BOXES09","CA0001","CA0002","CA0003","CA0004","CA0005","CA0006","CA0007","CA0008","CA0009","CA0010","CA0011","CA0012","CA0013","CA0014","CA0015","CA0016","CA0017","CA0018","CA0019","CA0020","CA0021","CAAIRP","CAARAY","CAARMR","CAARMY01","CAARMY02","CAARMY03","CAARMY04","CABARN02","CABARR01","CABARR02","CABHUT","CABUNK01","CABUNK02","CABUNK03","CABUNK04","CACHIG01","CACHIG02","CACHIG03","CACHIG04","CACHIG05","CACHIG06","CACITY01","CACITY02","CACITY03","CACITY04","CACOLO01","CACRSH01","CACRSH02","CACRSH03","CACRSH04","CACRSH05","CACUFGL","CAEAST01","CAEAST02","CAEGYP01","CAEGYP02","CAEGYP03","CAEGYP04","CAEGYP05","CAEGYP06","CAEUR04","CAEUR1","CAEUR2","CAEURO05","CAFARM01","CAFARM02","CAFARM06","CAFNCB","CAFNCP","CAFNCW","CAFRFGL","CAFRMA","CAFRMB","CAGARD01","CAGAS01","CAGEFGL","CAHOSP","CAHSE01","CAHSE02","CAHSE03","CAHSE04","CAHSE05","CAHSE06","CAHSE07","CAIND01","CAIRFGL","CAKRMW","CALA01","CALA03","CALA04","CALA05","CALA06","CALA07","CALA08","CALA09","CALA10","CALA11","CALA12","CALA13","CALA14","CALA15","CALAB","CALBFGL","CALIT01E","CALIT01N","CALIT01S","CALIT01W","CALIT02L","CALIT02R","CALIT03E","CALIT03N","CALIT03S","CALIT03W","CALOND01","CALOND03","CALOND04","CALOND05","CALOND06","CALUNR01","CALUNR02","CAMACH","CAMEX01","CAMEX02","CAMEX03","CAMEX04","CAMEX05","CAMIAM01","CAMIAM02","CAMIAM03","CAMIAM04","CAMIAM05","CAMIAM06","CAMIAM07","CAMIAM08","CAMISC01","CAMISC02","CAMISC03","CAMISC04","CAMISC05","CAMISC06","CAMOON01","CAMORR01","CAMORR02","CAMORR03","CAMORR04","CAMORR05","CAMORR06","CAMORR07","CAMORR08","CAMORR09","CAMORR10","CAMOV01","CAMOV02","CAMSC01","CAMSC02","CAMSC03","CAMSC04","CAMSC05","CAMSC06","CAMSC07","CAMSC08","CAMSC09","CAMSC10","CAMSC11","CAMSC12","CAMSC13","CANEWY01","CANEWY04","CANEWY05","CANEWY06","CANEWY07","CANEWY08","CANEWY10","CANEWY11","CANEWY12","CANEWY13","CANEWY14","CANEWY15","CANEWY16","CANEWY17","CANEWY18","CANEWY20","CANEWY21","CANWY05","CANWY09","CANWY22","CANWY23","CANWY24","CANWY25","CANWY26","CAOILD","CAOUTP","CAPARK01","CAPARK02","CAPARK03","CAPARK04","CAPARK05","CAPARK06","CAPARS01","CAPARS02","CAPARS04","CAPARS05","CAPARS06","CAPARS07","CAPARS08","CAPARS09","CAPARS10","CAPARS11","CAPARS12","CAPARS13","CAPARS14","CAPOFGL","CAPOL01E","CAPOL01N","CAPOL01S","CAPOL01W","CAPOWR","CAPRS03","CAPYR01","CAPYR02","CAPYR03","CARUFGL","CARUS01","CARUS02A","CARUS02B","CARUS02C","CARUS02D","CARUS02E","CARUS02F","CARUS02G","CARUS03","CARUS04","CARUS05","CARUS06","CARUS07","CARUS08","CARUS09","CARUS10","CARUS11","CASANF01","CASANF02","CASANF03","CASANF04","CASANF05","CASANF06","CASANF07","CASANF08","CASANF09","CASANF10","CASANF11","CASANF12","CASANF13","CASANF14","CASANF15","CASANF16","CASANF17","CASANF18","CASEAT01","CASEAT02","CASIN01E","CASIN01N","CASIN01S","CASIN01W","CASIN03E","CASIN03S","CASKFGL","CASLAB","CASTL01","CASTL02","CASTL03","CASTL04","CASTL05A","CASTL05B","CASTL05C","CASTL05D","CASTL05E","CASTL05F","CASTL05G","CASTL05H","CASTRT01","CASTRT02","CASTRT03","CASTRT04","CASTRT05","CASWST01","CASYDN02","CASYDN03","CATECH01","CATEXS01","CATEXS02","CATEXS03","CATEXS04","CATEXS05","CATEXS06","CATEXS07","CATEXS08","CATHOSP","CATIME01","CATIME02","CATRAN01","CATRAN02","CATRAN03","CATS01","CAUKFGL","CAURB01","CAURB02","CAURB03","CAUSFGL","CAWA2A","CAWA2B","CAWA2C","CAWA2D","CAWASH01","CAWASH03","CAWASH04","CAWASH05","CAWASH06","CAWASH07","CAWASH08","CAWASH09","CAWASH10","CAWASH11","CAWASH13","CAWASH14","CAWASH15","CAWASH16","CAWASH17","CAWASH18","CAWASH19","CAWSH12","CAWT01","CITY01","CITY02","CITY03","CITY04","CITY05","CITY06","CITY07","CITY08","CITY09","CITY10","CITY11","CITY12","CITY13","CITY14","CITY15","CITY16","CITY17","CITY18","CITY19","CITY20","CITY21","CITY22","CTDAM","CTVEGA","GAAIRC","GAARTY","GACNST","GACSAM","GACSPH","GACTWR","GADEPT","GADPSA","GAFSDF","GAFWLL","GAGAP","GAGATE_A","GAGATE_B","GAGREEN","GAHPAD","GAICBM","GAKODK","GALITE","GAOLDCC1","GAOLDCC2","GAOLDCC3","GAOLDCC4","GAOLDCC5","GAOLDCC6","GAORE","GAOREP","GAPAVE","GAPILE","GAPILL","GAPLUG","GAPOWR","GAPRIS","GARADR","GAREFN","GAROBO","GAROCK","GASAND","GASILO","GASPOT","GASPST","GATECH","GATICK","GAVULC","GAWALL","GAWEAP","GAWETH","GAYARD","GTGCAN","HDSTN01","ICE01","ICE02","ICE03","ICE04","ICE05","LT_EUR01","LT_EUR02","LT_GEN01","LT_GEN02","LT_GEN03","LT_GEN04","LT_SGN01","LT_SGN02","LT_SGN03","LT_SGN04","NAAPWR","NABNKR","NACLON","NACNST","NADEPT","NAFLAK","NAFNCE","NAGATE_A","NAGATE_B","NAHAND","NAHPAD","NAINDP","NAIRON","NALASR","NAMISL","NAMNTK","NANRCT","NAOBEL","NAPOST","NAPOWR","NAPSIS","NAPSYA","NAPSYB","NAPULS","NARADR","NAREFN","NASAM","NASTLH","NATBNK","NATECH","NATMPL","NATSLA","NAWALL","NAWEAP","NAYARD","NTPYRA","POLE01","POLE02","SIGN01","SIGN02","SIGN03","SIGN04","SIGN05","SIGN06","SPKR01","TIBTRE01","TIBTRE02","TIBTRE03","TREE01","TREE02","TREE03","TREE04","TREE05","TREE06","TREE07","TREE08","TREE09","TREE10","TREE11","TREE12","TREE13","TREE14","TREE15","TREE16","TREE17","TREE18","TREE19","TREE20","TREE21","TREE22","TREE23","TREE24","TREE25","TREE26","TREE27","TREE28","TREE29","TREE30","TREE31","TREE32","TREE33","TREE34","TREE35","TREE36","TRFF01","TRFF02","TRFF03","TRFF04","UFO","YABRCK","YACNST","YACOMD","YAGGUN","YAGNTC","YAGRND","YAPOWR","YAPPET","YAPPPT","YAPSYT","YAREFN","YAROCK","YATECH","YAWEAP","YAYARD"];
+const ARTS = ["120MM","ABAN01","ABAN02","ABAN03","ABAN04","ABAN05","ABAN06","ABAN07","ABAN08","ABAN09","ABAN10","ABAN11","ABAN12","ABAN13","ABAN14","ABAN15","ABAN16","ABAN17","ABAN18","ADOG","ADOGP","AEGIS","ALL","AMBU","AMMO01","AnimalSequence","APOCEXP","ARMOR","ARND","ARRWDEST","ARRWE","ARRWN","ARRWNE","ARRWNW","ARRWS","ARRWSE","ARRWSW","ARRWW","ASW","BBBLELRG","BBOARD01","BBOARD02","BBOARD03","BBOARD04","BBOARD05","BBOARD06","BBOARD07","BBOARD08","BBOARD09","BBOARD10","BBOARD11","BBOARD12","BBOARD13","BBOARD14","BBOARD15","BBOARD16","BCAB","BEACON","BEAG","BEHIND","BFRT","BIGBLUE","BORIS","BorisSequence","BOXES01","BOXES02","BOXES03","BOXES04","BOXES05","BOXES06","BOXES07","BOXES08","BOXES09","BPLN","BRIDGB","BRIDGE","BrontSequence","BRRLEXP1","BRRLEXP2","BRUTDIE","BRUTE","BruteSequence","BSUB","BSUBMISL","BURN-L","BURN-M","BURN-S","BURNT01","BURNT02","BURNT03","BURNT04","BURNT05","BURNT06","BURNT07","BURNT08","BURNT09","BURNT10","BURNT11","BURNT12","BUS","CA0001","CA0002","CA0003","CA0004","CA0005","CA0006","CA0007","CA0008","CA0009","CA0010","CA0011","CA0012","CA0013","CA0014","CA0015","CA0016","CA0017","CA0018","CA0019","CA0020","CA0021","CAAIRP","CAAIRP_A","CAAIRP_AD","CAAIRP_F","CAARAY","CAARAY_A","CAARAY_B","CAARAY_C","CAARAY_CD","CAARAY_D","CAARAY_DD","CAARMR","CAARMR_A","CAARMY01","CAARMY02","CAARMY03","CAARMY04","CABARN02","CABARR01","CABARR02","CABHUT","CABUNK01","CABUNK02","CABUNK03","CABUNK04","CACH06DM","CACHIG01","CACHIG02","CACHIG03","CACHIG04","CACHIG04D","CACHIG05","CACHIG06","CACITY01","CACITY02","CACITY03","CACITY04","CACOLO01","CACRSH01","CACRSH02","CACRSH03","CACRSH04","CACRSH05","CACUFGL","CACUFGL_A","CAEAST01","CAEAST01DM","CAEAST02","CAEGYP01","CAEGYP02","CAEGYP03","CAEGYP04","CAEGYP05","CAEGYP06","CAEUR04","CAEUR1","CAEUR2","CAEURO05","CAFARM01","CAFARM02","CAFARM06","CAFNCB","CAFNCP","CAFNCW","CAFRFGL","CAFRFGL_A","CAFRMA","CAFRMB","CAGARD01","CAGAS01","CAGEFGL","CAGEFGL_A","CAGRD1_A","CAHOSP","CAHOSP_A","CAHOSP_AD","CAHOSP_F","CAHSE01","CAHSE02","CAHSE03","CAHSE04","CAHSE05","CAHSE06","CAHSE07","CAIND01","CAIRFGL","CAIRFGL_A","CAKRMW","CALA01","CALA03","CALA04","CALA05","CALA06","CALA07","CALA08","CALA09","CALA10","CALA10_A","CALA10_AD","CALA11","CALA12","CALA13","CALA14","CALA15","CALAB","CALBFGL","CALBFGL_A","CALIT01E","CALIT01N","CALIT01S","CALIT01W","CALIT02L","CALIT02R","CALIT03E","CALIT03N","CALIT03S","CALIT03W","CALND6_A","CALND6_AD","CALOND01","CALOND03","CALOND04","CALOND05","CALOND06","CALUNR01","CALUNR02","CAMACH","CAMACH_F","CAMEX01","CAMEX02","CAMEX03","CAMEX04","CAMEX05","CAMIAM01","CAMIAM02","CAMIAM03","CAMIAM04","CAMIAM05","CAMIAM06","CAMIAM07","CAMIAM08","CAMISC01","CAMISC02","CAMISC03","CAMISC04","CAMISC05","CAMISC06","CAML","CAMOON01","CAMORR01","CAMORR02","CAMORR03","CAMORR04","CAMORR05","CAMORR06","CAMORR07","CAMORR08","CAMORR09","CAMORR10","CAMOV01","CAMOV01_A","CAMOV01_AD","CAMOV02","CAMOV02_A","CAMOV02_AD","CAMSC01","CAMSC02","CAMSC03","CAMSC04","CAMSC05","CAMSC06","CAMSC06A","CAMSC07","CAMSC08","CAMSC09","CAMSC10","CAMSC11","CAMSC12","CAMSC13","CANEWY01","CANEWY04","CANEWY05","CANEWY06","CANEWY07","CANEWY08","CANEWY10","CANEWY11","CANEWY12","CANEWY13","CANEWY14","CANEWY15","CANEWY16","CANEWY17","CANEWY18","CANEWY20","CANEWY21","CANWY05","CANWY09","CANWY22","CANWY23","CANWY24","CANWY25","CANWY26","CANY04DM","CAOILD","CAOILD_A","CAOILD_AD","CAOILD_F","CAOS","CAOUTP","CAOUTP_A","CAOUTP_AD","CAOUTP_B","CAOUTP_BD","CAOUTP_C","CAOUTP_CD","CAOUTP_D","CAOUTP_DD","CAOUTP_F","CAPARK01","CAPARK02","CAPARK03","CAPARK04","CAPARK05","CAPARK06","CAPARS01","CAPARS02","CAPARS04","CAPARS05","CAPARS06","CAPARS07","CAPARS08","CAPARS09","CAPARS10","CAPARS11","CAPARS12","CAPARS12D","CAPARS13","CAPARS14","CAPOFGL","CAPOFGL_A","CAPOL01E","CAPOL01N","CAPOL01S","CAPOL01W","CAPOWR","CAPOWR_A","CAPOWR_AD","CAPR01DM","CAPR11DM","CAPRS03","CAPYR01","CAPYR02","CAPYR03","CAR","CARGOCAR","CARRIER","CARUFGL","CARUFGL_A","CARUS01","CARUS01D","CARUS02A","CARUS02B","CARUS02C","CARUS02D","CARUS02E","CARUS02F","CARUS02G","CARUS03","CARUS04","CARUS05","CARUS06","CARUS07","CARUS08","CARUS09","CARUS10","CARUS11","CARYLAND","CASANF01","CASANF02","CASANF03","CASANF04","CASANF05","CASANF06","CASANF07","CASANF08","CASANF09","CASANF10","CASANF11","CASANF12","CASANF13","CASANF14","CASANF15","CASANF16","CASANF17","CASANF18","CASEAT01","CASEAT02","CASEAT02_A","CASEAT02_AD","CASIN01E","CASIN01N","CASIN01S","CASIN01W","CASIN03E","CASIN03S","CASKFGL","CASKFGL_A","CASLAB","CASLAB_F","CASTL01","CASTL02","CASTL03","CASTL04","CASTL04DM","CASTL05A","CASTL05B","CASTL05C","CASTL05D","CASTL05E","CASTL05F","CASTL05G","CASTL05H","CASTRT01","CASTRT02","CASTRT03","CASTRT04","CASTRT05","CASWST01","CASYDN02","CASYDN03","CATECH01","CATEXS01","CATEXS02","CATEXS03","CATEXS04","CATEXS05","CATEXS06","CATEXS07","CATEXS08","CATHOSP","CATIME_A","CATIME_AD","CATIME01","CATIME02","CATR03DM","CATRAN01","CATRAN02","CATRAN03","CATS01","CAUKFGL","CAUKFGL_A","CAURB01","CAURB02","CAURB03","CAUSFGL","CAUSFGL_A","CAWA14DM","CAWA15DM","CAWA19_A","CAWA19_AD","CAWA19_AG","CAWA2A","CAWA2B","CAWA2C","CAWA2D","CAWASH01","CAWASH03","CAWASH04","CAWASH05","CAWASH06","CAWASH07","CAWASH08","CAWASH09","CAWASH10","CAWASH11","CAWASH13","CAWASH14","CAWASH15","CAWASH16","CAWASH17","CAWASH18","CAWASH19","CAWS01DM","CAWSH12","CAWSH12A","CAWSH12D","CAWSH18A","CAWT01","CBLC","CCOMAND","CDEST","CDGAS","CHEMISLE","CHRONOAR","CHRONOBM","CHRONOFD","CHRONOSK","CHRONOTG","CITY01","CITY02","CITY03","CITY04","CITY05","CITY06","CITY07","CITY08","CITY09","CITY10","CITY11","CITY12","CITY13","CITY14","CITY15","CITY16","CITY17","CITY18","CITY19","CITY20","CITY21","CITY22","CIV1","CIV2","Civ2Sequence","CIV3","CIVA","CIVAN","CIvanSequence","CIVB","CIVBBP","CIVBF","CIVBFM","CIVBTM","CIVC","CivGunSequence","CIVP","CivSequence","CIVSF","CIVSFM","CIVSTM","CLEG","ClegSequence","CLNT","CLOAK","CMIN","CMON","ComandoSequence","CONA","CONS","ConSequence","COP","COW","CRATE","CRATER01","CRATER02","CRATER03","CRATER04","CRATER05","CRATER06","CRATER07","CRATER08","CRATER09","CRATER10","CRATER11","CRATER12","CRIVEXP","CRIVEXP2","CRUISE","CRYSTAL1","CRYSTAL2","CRYSTAL3","CRYSTAL4","CTDAM","CTDAM_A","CTDAM_AD","CTDAM_B","CTDAM_BD","CTVEGA","CyborgSequence","DBRIS1HV","DBRIS1LG","DBRIS1SM","DBRIS2HV","DBRIS2LG","DBRIS2SM","DBRIS3HV","DBRIS3LG","DBRIS3SM","DBRIS4LG","DBRIS4SM","DBRIS5LG","DBRIS5SM","DBRIS6LG","DBRIS6SM","DBRIS7LG","DBRIS7SM","DBRIS8LG","DBRIS8SM","DBRIS9LG","DBRIS9SM","DBRI-WM1","DBRI-WM2","DBRI-WM3","DBRI-WM4","DBRI-WM5","DBRI-WM6","DBRS10LG","DBRS10SM","DDBX","DEATH_A","DEATH_B","DEATH_C","DEATH_D","DEATH_E","DEATH_F","DEMTEXP","DESO","DesoSequence","DEST","DISK","DISKRAY","DLPH","DMISL","DNOA","DNOB","DOG","DoggieSequence","DOGP","DogSequence","DOLY","DRAGON","DRED","DREDMISS","DRON","DRONP","DROPEXP","DROPLAND","DROPPOD","DROPPOD2","DURASMOKE","E1Sequence","EINS","EinsSequence","ELECTRO","EMP_FX01","ENGINEER","EngineerSequence","EUROC","EXPLOLB","EXPLOLRG","EXPLOMED","EXPLOSML","FALC","FENCE01","FENCE02","FENCE03","FENCE04","FENCE05","FENCE06","FENCE07","FENCE08","FENCE09","FENCE10","FENCE11","FENCE12","FENCE13","FENCE14","FENCE15","FENCE16","FENCE17","FENCE18","FENCE19","FENCE20","FENCE21","FENCE22","FIRE01","FIRE02","FIRE03","FIRE3","FIREPOWR","FlakSequence","FLAKT","FLAMEGUY","FORCSHLD","FORTRESS","FPLS","FSAIR","FSGRND","FSIDLE","FTRK","FV","GAAIRC","GAAIRC_A","GAAIRC_AD","GAAIRC_B","GAAIRC_BD","GAAIRC_C","GAAIRC_CD","GAAIRCBB","GAARTY","GACNST","GACNST_A","GACNST_AD","GACNST_B","GACNST_BD","GACSAM","GACSPH","GACSPH_E","GACSPH_ED","GACSPH_F","GACSPH_FD","GACSPH_G","GACSPH_GD","GACSPH_H","GACSPH_HD","GACTWR","GACTWR_A","GACTWR_B","GACTWR_C","GACTWR_D","GADEPT","GADEPT_A","GADEPT_AD","GADEPT_B","GADEPT_BD","GADEPT_C","GADEPT_CD","GADEPT_D","GADEPT_DD","GADPSA","GADPSA_A","GAFSDF","GAFSDF_A","GAFWLL","GAGAP","GAGAP_A","GAGAP_AD","GAGATE_A","GAGATE_B","GAGREEN","GAHPAD","GAHPAD_A","GAHPAD_AD","GAICBM","GAICBM_A","GAKODK","GAKODK_A","GAKODK_AD","GAKODK_B","GAKODK_C","GAKODK_CD","GALITE","GAOLDCC1","GAOLDCC2","GAOLDCC3","GAOLDCC4","GAOLDCC5","GAOLDCC6","GAORE","GAOREP","GAOREP_A","GAOREP_AD","GAPAVE","GAPILE","GAPILE_A","GAPILE_AD","GAPILL","GAPLUG","GAPLUG_A","GAPLUG_B","GAPLUG_BD","GAPLUG_C","GAPLUG_D","GAPLUG_E","GAPLUG_F","GAPOWR","GAPOWR_A","GAPOWR_AD","GAPOWR_B","GAPRIS","GAPRIS_A","GAPRIS_AD","GAPRIS_B","GAPRIS_BD","GARADR","GARADR_A","GARADR_AD","GAREFN","GAREFNBB","GAREFNL1","GAREFNL2","GAREFNL3","GAREFNL4","GAREFNOR","GAROBO","GAROBO_A","GAROBO_AD","GAROCK","GASAND","GASILO","GASILO_A","GASILO_AD","GASILO_B","GASILO_BD","GASPOT","GASPOT_A","GASPOT_AD","GASPST","GASPST_A","GASPST_AD","GATECH","GATECH_A","GATECH_AD","GATICK","GAVULC","GAWALL","GAWEAP","GAWEAP_1","GAWEAP_1D","GAWEAP_2","GAWEAP_2D","GAWEAP_3","GAWEAP_3D","GAWEAP_4","GAWEAP_4D","GAWEAP_A","GAWEAP_AD","GAWEAP_B","GAWEAP_BD","GAWETH","GAWETH_E","GAWETH_ED","GAWETH_F","GAWETH_FD","GAWETH_G","GAWETH_GD","GAWETH_H","GAWETH_HD","GAYARD","GAYARD_A","GAYARD_AD","GAYARD_C","GAYARD_CD","GAYARD_D","GAYARD_DD","GAYARD_S1","GAYARD_S1D","GAYARD_S2","GAYARD_S2D","GAYARD_S3","GAYARD_S3D","GCMUZZLE","GEM01","GEM02","GEM03","GEM04","GEM05","GEM06","GEM07","GEM08","GEM09","GEM10","GEM11","GEM12","GENDEATH","GenericMDSequence","GenSequence","GGI","GI","GISequence","GTGCAN","GTNK","GuardianGISequence","GUNFIRE","H2O_EXP1","H2O_EXP2","H2O_EXP3","HARV","HDSTN01","HEALALL","HEALONE","HeroOneSequence","HeroTwoSequence","HIND","HORNET","HORV","HTK","HTNK","HTRKPUFF","HWTZ","HYD","ICE01","ICE02","ICE03","ICE04","ICE05","INFDIE","INIT","INITFIRE","INVISO","IONBEAM","IRONBLST","IRONFX","IVAN","IvanSequence","JEEP","JOSH","KTSTLEXP","LangIdleMDSequence","LCRF","LIMO","LOBRDB01","LOBRDB02","LOBRDB03","LOBRDB04","LOBRDB05","LOBRDB06","LOBRDB07","LOBRDB08","LOBRDB09","LOBRDB10","LOBRDB11","LOBRDB12","LOBRDB13","LOBRDB14","LOBRDB15","LOBRDB16","LOBRDB17","LOBRDB18","LOBRDB19","LOBRDB20","LOBRDB21","LOBRDB22","LOBRDB23","LOBRDB24","LOBRDB25","LOBRDB26","LOBRDB27","LOBRDB28","LOBRDG01","LOBRDG02","LOBRDG03","LOBRDG04","LOBRDG05","LOBRDG06","LOBRDG07","LOBRDG08","LOBRDG09","LOBRDG10","LOBRDG11","LOBRDG12","LOBRDG13","LOBRDG14","LOBRDG15","LOBRDG16","LOBRDG17","LOBRDG18","LOBRDG19","LOBRDG20","LOBRDG21","LOBRDG22","LOBRDG23","LOBRDG24","LOBRDG25","LOBRDG26","LOBRDG27","LOBRDG28","LOBRDGB1","LOBRDGB2","LOBRDGB3","LOBRDGB4","LOBRDGE1","LOBRDGE2","LOBRDGE3","LOBRDGE4","LT_EUR01","LT_EUR02","LT_GEN01","LT_GEN02","LT_GEN03","LT_GEN04","LT_SGN01","LT_SGN02","LT_SGN03","LT_SGN04","LTNK","LUNR","LUNRK1","LUNRK2","LUNRK3","LUNRK4","LUNRK5","LUNRK6","MCV","MedicSequence","MEDUSA","METDEBRI","METLARGE","METLTRAL","METSMALL","METSTRAL","MGUN-E","MGUN-N","MGUN-NE","MGUN-NW","MGUN-S","MGUN-SE","MGUN-SW","MGUN-W","MIND","MINDANIM","MINDANIMR","MININUKE","MISLCHEM","MISLMLTI","MLTIMISL","MONEY","MONOCAR","MONOENG","Movies","MTNK","MummySequence","MUMY","NAAPWR","NAAPWR_A","NAAPWR_AD","NABNKR","NACLON","NACLON_A","NACLON_AD","NACNST","NACNST_A","NACNST_AD","NACNST_B","NACNST_BD","NACNST_C","NACNST_CD","NADEPT","NADEPT_B","NADEPT_BD","NADEPT_C1","NADEPT_C2","NADEPT_C3","NADEPT_C4","NADEPT_C5","NADEPT_C6","NADEPTBB","NAFLAK","NAFNCE","NAGATE_A","NAGATE_B","NAHAND","NAHPAD","NAHPAD_A","NAHPAD_AD","NAINDP","NAINDP_A","NAINDP_AD","NAIRON","NAIRON_A","NAIRON_AD","NAIRON_E","NAIRON_ED","NAIRON_F","NAIRON_FD","NAIRON_G","NAIRON_GD","NAIRON_H","NAIRON_HD","NALASR","NAMISL","NAMISL_E","NAMISL_ED","NAMISL_F","NAMISL_FD","NAMISL_G","NAMISL_GD","NAMISL_H","NAMISL_HD","NAMNTK","NAMNTK_A","NANRCT","NANRCT_A","NANRCT_AD","NANRCT_P","NANRCT_PD","NAOBEL","NAPOST","NAPOST_A","NAPOST_AD","NAPOST_B","NAPOWR","NAPOWR_A","NAPOWR_AD","NAPSIS","NAPSIS_A","NAPSIS_AD","NAPSYA","NAPSYA_A","NAPSYA_AD","NAPSYB","NAPSYB_A","NAPSYB_AD","NAPULS","NAPULS_A","NARADR","NARADR_A","NARADR_AD","NAREFN","NAREFNL1","NAREFNL1D","NAREFNL2","NAREFNL2D","NAREFNL3","NAREFNL3D","NAREFNL4","NAREFNL4D","NAREFNOR","NASAM","NASAM_A","NASTLH","NASTLH_A","NASTLH_AD","NATBNK","NATBNK_A","NATBNK_A2","NATBNK_A2D","NATBNK_AD","NATBNK_B","NATBNK_B2","NATBNK_B2D","NATBNK_BD","NATECH","NATMPL","NATMPL_A","NATSLA","NATSLA_A","NATSLA_AD","NATSLA_B","NATSLA_BD","NAWALL","NAWEAP","NAWEAP_1","NAWEAP_1D","NAWEAP_2","NAWEAP_2D","NAWEAP_3","NAWEAP_3D","NAWEAP_4","NAWEAP_4D","NAWEAP_A","NAYARD","NAYARD_A","NAYARD_AD","NAYARD_B","NAYARD_BD","NAYARD_C","NAYARD_CD","NAYARD_D","NAYARD_DD","NAYARD_S1","NAYARD_S1D","NAYARD_S2","NAYARD_S2D","NAYARD_S3","NAYARD_S3D","NKMSLDN","NKMSLUP","NTPYRA","NTPYRA_A","NTPYRA_AD","NUKEANIM","NUKEBALL","NUKEDIE","NUKEPUFF","NUKETO","PARABOMB","PARACH","PCV","PDFXCLD","PDFXLOC","PDPLANE","PENTGEN","PICK","PIFF","PIFFPIFF","PODRING","POLARB","POLE01","POLE02","PRES","PROPA","PsiTroopSequence","PSIWARN","PTROOP","PTRUCK","PULSBALL","PULSEFX1","PULSEFX2","RAILBRDG","REVEAL","RING","RING1","RMNV","ROBO","ROCK","RocketeerSequence","RTNK","S_BANG16","S_BANG24","S_BANG34","S_BANG48","S_BRNL20","S_BRNL30","S_BRNL40","S_BRNL58","S_CLSN16","S_CLSN22","S_CLSN30","S_CLSN42","S_CLSN58","S_TUMU22","S_TUMU30","S_TUMU42","S_TUMU60","SAM-E","SAM-N","SAM-NE","SAM-NW","SAM-S","SAM-SE","SAM-SW","SAM-W","SCHD","SCHP","SCHPDEPL","SEAL","SEALA","SealSequence","SGRYSMK1","SHAD","SHK","SHROUDX","SIGN01","SIGN02","SIGN03","SIGN04","SIGN05","SIGN06","SLAV","SlaveSequence","SMCV","SMIN","SMKPUFF","SMOKEY","SMOKEY2","SNIPE","SPEED","SPKR01","SPY","SPYP","SpySequence","SQD","SQDG","SQDG_E","SQDG_N","SQDG_NE","SQDG_NW","SQDG_S","SQDG_SE","SQDG_SW","SQDG_W","SQDP","SREF","SROCK01","SROCK02","SROCK03","SROCK04","SROCK05","SSRV","STANG","STEAMPUF","STLN","SUB","SUBT","SUVB","SUVW","TANY","TanyaSequence","TAXI","TechSequence","TELE","TerroristSequence","TIB01","TIB02","TIB03","TIB04","TIB05","TIB06","TIB07","TIB08","TIB09","TIB10","TIB11","TIB12","TIB13","TIB14","TIB15","TIB16","TIB17","TIB18","TIB19","TIB20","TIBTRE01","TIBTRE02","TIBTRE03","TNKD","TORPEDO","TRACKS01","TRACKS02","TRACKS03","TRACKS04","TRACKS05","TRACKS06","TRACKS07","TRACKS08","TRACKS09","TRACKS10","TRACKS11","TRACKS12","TRACKS13","TRACKS14","TRACKS15","TRACKS16","TREE01","TREE02","TREE03","TREE04","TREE05","TREE06","TREE07","TREE08","TREE09","TREE10","TREE11","TREE12","TREE13","TREE14","TREE15","TREE16","TREE17","TREE18","TREE19","TREE20","TREE21","TREE22","TREE23","TREE24","TREE25","TREE26","TREE27","TREE28","TREE29","TREE30","TREE31","TREE32","TREE33","TREE34","TREE35","TREE36","TREESPRD","TrexSequence","TRFF01","TRFF02","TRFF03","TRFF04","TROCK01","TROCK02","TROCK03","TROCK04","TROCK05","TRS","TRST","TRTUNN01","TRTUNN02","TRTUNN03","TRTUNN04","TRUCKA","TRUCKB","TSTIMPCT","TTNK","TUG","TUNTOP01","TUNTOP02","TUNTOP03","TUNTOP04","TWINKLE1","TWINKLE2","TWINKLE3","TWLT026","TWLT036","TWLT050","TWLT070","TWLT070T","TWLT100","TWLT100I","TWNK1","UCBLOOD","UCCONS","UCELEC","UCFLASH","UCINIT","UFO","UTNK","V3","V3ROCKET","V3TAKOFF","V3TRAIL","VEINS","VETERAN","VIRUS","VIRUSD","VLAD","VLADIMIR","VTEXPLOD","VTMUZZLE","WA01X","WA02X","WA03X","WA04X","WAKE1","WAKE2","WARPAWAY","WARPIN","WARPOUT","WB01X","WB02X","WB03X","WB04X","WC01X","WC02X","WC03X","WC04X","WCCLOUD1","WCCLOUD2","WCCLOUD3","WCLBOLT1","WCLBOLT2","WCLBOLT3","WCRATE","WD01X","WD02X","WD03X","WD04X","WINI","XGRYMED1","XGRYMED2","XGRYSML1","XGRYSML2","YABRCK","YABRCK_A","YABRCK_AD","YACNST","YACNST_A","YACNST_AD","YACNST_B","YACNST_BD","YACNST_C","YACNST_CD","YACOMD","YAGGUN","YAGNTC","YAGNTC_E","YAGNTC_ED","YAGNTC_F","YAGNTC_FD","YAGNTC_G","YAGNTC_GD","YAGNTC_H","YAGNTC_HD","YAGNTC_P","YAGNTC_PD","YAGRND","YAGRND_A","YAGRND_AD","YAGRND_B","YAGRND_BD","YAGRND_C","YAGRND_CD","YAGRND_D","YAGRND_DD","YAPOWR","YAPOWR_A","YAPOWR_AD","YAPOWR_B","YAPOWR_BD","YAPOWR_C","YAPOWR_CD","YAPPET","YAPPET_A","YAPPET_AD","YAPPET_E","YAPPET_ED","YAPPET_F","YAPPET_FD","YAPPET_G","YAPPET_GD","YAPPET_H","YAPPET_HD","YAPPPT","YAPSYT","YAPSYT_A","YAPSYT_AD","YAPSYT_B","YAPSYT_BD","YAREFN","YAREFN_A","YAROCK","YAROCK_A","YATECH","YATECH_A","YATECH_AD","YAWEAP","YAWEAP_1","YAWEAP_1D","YAWEAP_2","YAWEAP_2D","YAWEAP_3","YAWEAP_3D","YAWEAP_4","YAWEAP_4D","YAWEAP_A","YAWEAP_AD","YAYARD","YAYARD_A","YAYARD_AD","YAYARD_C","YAYARD_CD","YAYARD_D","YAYARD_DD","YAYARD_S","YAYARD_S2","YAYARD_S2D","YAYARD_S3","YAYARD_S3D","YAYARD_SD","YCAB","YENGINEER","YHVR","YTNK","YURBLANK","YURI","YURICNTL","YURIDIE","YuriPrSequence","YuriSequence","YURIX","YuriXSequence","ZBOMB","ZEP"];
+
+// --- state -----------------------------------------------------------------
+let scripts = [];
+
+const el = id => document.getElementById(id);
+
+function status(kind, text) {
+  const s = el('status');
+  s.className = 'status show ' + kind;
+  s.textContent = text;
+}
+
+function clearStatus() { el('status').className = 'status'; }
+
+// --- rendering -------------------------------------------------------------
+function optionList(values, selected) {
+  const out = ['<option value=""></option>'];
+  for (const v of values) {
+    out.push('<option value="' + v + '"' + (v === selected ? ' selected' : '') + '>' + v + '</option>');
+  }
+  return out.join('');
+}
+
+function render() {
+  const host = el('list');
+  host.innerHTML = '';
+
+  if (scripts.length === 0) {
+    host.innerHTML = '<p class="muted">还没有脚本。点下面的“添加脚本”。</p>';
+  }
+
+  scripts.forEach((s, i) => {
+    const box = document.createElement('div');
+    box.className = 'script';
+
+    const byCountry = s.mode === 'byCountry';
+    let pairs = '';
+
+    if (byCountry) {
+      const rows = (s.byCountry || []).map((p, j) => `
+        <div class="pair">
+          <div class="row">
+            <div>
+              <label>国家</label>
+              <select data-f="country" data-i="${i}" data-j="${j}">${optionList(s._countries || [], p.country)}</select>
+            </div>
+            <div>
+              <label>ART 段</label>
+              <select data-f="section" data-i="${i}" data-j="${j}">${optionList(ARTS, p.section)}</select>
+            </div>
+            <div style="flex:0 0 auto; display:flex; align-items:flex-end">
+              <button class="del" data-act="rmpair" data-i="${i}" data-j="${j}">×</button>
+            </div>
+          </div>
+        </div>`).join('');
+
+      pairs = rows + `<button class="sec" data-act="addpair" data-i="${i}">+ 加一个国家</button>`;
+    }
+
+    box.innerHTML = `
+      <div class="top">
+        <strong class="grow">脚本 ${i + 1}</strong>
+        <button class="del" data-act="del" data-i="${i}">删除</button>
+      </div>
+
+      <label>说明（可选，只写在文件里，不影响功能）</label>
+      <input data-f="name" data-i="${i}" value="${s.name || ''}">
+
+      <label>被改的建筑（类型 ID）</label>
+      <select data-f="building" data-i="${i}">${optionList(BUILDINGS, s.building)}</select>
+      <input data-f="buildingFree" data-i="${i}" value="${s.buildingFree || ''}"
+             placeholder="或直接手写 ID（例如只在 artmd 里出现的段名）">
+
+      <label>外观怎么定</label>
+      <select data-f="mode" data-i="${i}">
+        <option value="look"${byCountry ? '' : ' selected'}>所有人同一个外观（look）</option>
+        <option value="byCountry"${byCountry ? ' selected' : ''}>按拥有者国家不同（byCountry）</option>
+      </select>
+
+      ${byCountry ? `
+        <label>每个国家用哪个 ART 段</label>
+        ${pairs}
+      ` : `
+        <label>外观用的 ART 段（look）</label>
+        <select data-f="look" data-i="${i}">${optionList(ARTS, s.look)}</select>
+        <input data-f="lookFree" data-i="${i}" value="${s.lookFree || ''}"
+               placeholder="或直接手写段名">
+
+        <label>占地</label>
+        <select data-f="footprint" data-i="${i}">
+          <option value="follow"${s.footprint === 'self' ? '' : ' selected'}>跟随外观（推荐，默认）</option>
+          <option value="self"${s.footprint === 'self' ? ' selected' : ''}>保持原样（只换外观）</option>
+        </select>
+      `}
+    `;
+    host.appendChild(box);
+  });
+
+  update();
+}
+
+// --- the generated document ------------------------------------------------
+function build() {
+  const out = [];
+  for (const s of scripts) {
+    const id = (s.buildingFree || s.building || '').trim();
+    if (!id) continue;
+
+    const o = { type: 'appearance', building: id };
+    if (s.name) o.name = s.name;
+
+    if (s.mode === 'byCountry') {
+      const map = {};
+      for (const p of (s.byCountry || [])) {
+        if (p.country && p.section) map[p.country] = p.section;
+      }
+      if (Object.keys(map).length === 0) continue;
+      o.byCountry = map;
+    } else {
+      const look = (s.lookFree || s.look || '').trim();
+      if (!look) continue;
+      o.look = look;
+      if (s.footprint === 'self') o.foundationFrom = 'self';
+    }
+
+    out.push(o);
+  }
+  return out;
+}
+
+function update() {
+  const arr = build();
+  const text = JSON.stringify({ scripts: arr }, null, 2);
+  el('out').textContent = text;
+
+  // Local validation: the same rules the loader applies.
+  const problems = [];
+  const used = new Map();
+  for (const s of arr) {
+    const n = (used.get(s.building) || 0) + 1;
+    used.set(s.building, n);
+    if (n === 2) problems.push('建筑 ' + s.building + ' 在本页出现了两次（只有第一个会生效）');
+  }
+  if (arr.length === 0) problems.push('还没有可生成的脚本（要选建筑 + 外观）');
+
+  if (problems.length) status('warn', problems.join('；') + '。检查后再保存。');
+  else status('ok', '看起来没问题：' + arr.length + ' 个脚本。');
+}
+
+// --- data loading (for the reference lists) --------------------------------
+async function loadLists() {
+  // The lists are embedded; this only fills the counters and the search box.
+  el('bcount').textContent = BUILDINGS.length;
+  el('acount').textContent = ARTS.length;
+
+  el('search').addEventListener('input', ev => {
+    const q = ev.target.value.trim().toUpperCase();
+    if (!q) { el('searchOut').textContent = ''; return; }
+    const hit = (arr, kind) => arr.filter(v => v.toUpperCase().includes(q)).slice(0, 30)
+      .map(v => '<code>' + v + '</code>').join(' ');
+    el('searchOut').innerHTML =
+      '<div><b>建筑</b>: ' + (hit(BUILDINGS, 'b') || '<span class="muted">无</span>') + '</div>' +
+      '<div><b>ART 段</b>: ' + (hit(ARTS, 'a') || '<span class="muted">无</span>') + '</div>';
+  });
+}
+
+// --- events ----------------------------------------------------------------
+el('add').addEventListener('click', () => {
+  scripts.push({
+    mode: 'look', building: '', look: '', footprint: 'follow',
+    byCountry: [{ country: '', section: '' }],
+    _countries: ['Americans', 'Alliance', 'French', 'Germans', 'British',
+                 'Russians', 'Confederation', 'Africans', 'Arabs', 'YuriCountry']
+  });
+  render();
+});
+
+el('list').addEventListener('input', onEdit);
+el('list').addEventListener('change', onEdit);
+
+function onEdit(ev) {
+  const t = ev.target;
+  const f = t.dataset.f;
+  if (!f) return;
+  const i = +t.dataset.i;
+  const s = scripts[i];
+  if (!s) return;
+
+  if (f === 'country' || f === 'section') {
+    const j = +t.dataset.j;
+    s.byCountry[j][f] = t.value;
+  } else if (f === 'mode') {
+    s.mode = t.value;
+    render();          // the form shape changes
+    return;
+  } else {
+    s[f] = t.value;
+  }
+  update();
+}
+
+el('list').addEventListener('click', ev => {
+  const act = ev.target.dataset.act;
+  if (!act) return;
+  const i = +ev.target.dataset.i;
+
+  if (act === 'del') { scripts.splice(i, 1); render(); }
+  else if (act === 'addpair') { scripts[i].byCountry.push({ country: '', section: '' }); render(); }
+  else if (act === 'rmpair') { scripts[i].byCountry.splice(+ev.target.dataset.j, 1); render(); }
+});
+
+el('copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(el('out').textContent);
+    status('ok', '已复制到剪贴板。粘到 Karst\\scripts\\ 下的 .jsonc 文件即可。');
+  } catch (e) {
+    status('err', '复制失败（浏览器可能不允许）：' + e.message);
+  }
+});
+
+el('download').addEventListener('click', () => {
+  const blob = new Blob([el('out').textContent], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'appearance.jsonc';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  status('ok', '已下载。把它放进 Karst\\scripts\\ 即可。');
+});
+
+el('saveAs').addEventListener('click', async () => {
+  if (!window.showSaveFilePicker) {
+    status('warn', '这个浏览器不支持“直接保存到文件夹”，请用上面的下载按钮。');
+    return;
+  }
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: 'appearance.jsonc',
+      types: [{ description: 'Karst 脚本', accept: { 'application/json': ['.jsonc'] } }]
+    });
+    const w = await handle.createWritable();
+    await w.write(el('out').textContent);
+    await w.close();
+    status('ok', '已保存。游戏里保存即生效（改的是 look 就立刻能用）。');
+  } catch (e) {
+    if (e.name !== 'AbortError') status('err', '保存失败：' + e.message);
+  }
+});
+
+el('load').addEventListener('click', () => el('file').click());
+
+el('file').addEventListener('change', async ev => {
+  const f = ev.target.files[0];
+  if (!f) return;
+  try {
+    let text = await f.text();
+    // The format allows comments and trailing commas; strip them for JSON.parse.
+    text = text.replace(/\/\*[\s\S]*?\*\//g, '')
+               .replace(/(^|[^:])\/\/.*$/gm, '$1')
+               .replace(/,(\s*[}\]])/g, '$1');
+    const doc = JSON.parse(text);
+    const list = Array.isArray(doc) ? doc : (doc.scripts || [doc]);
+    scripts = list.map(o => {
+      const s = {
+        mode: o.byCountry ? 'byCountry' : 'look',
+        building: BUILDINGS.includes(o.building) ? o.building : '',
+        buildingFree: BUILDINGS.includes(o.building) ? '' : (o.building || ''),
+        name: o.name || '',
+        look: ARTS.includes(o.look) ? o.look : '',
+        lookFree: ARTS.includes(o.look) ? '' : (o.look || ''),
+        footprint: o.foundationFrom === 'self' ? 'self' : 'follow',
+        byCountry: o.byCountry
+          ? Object.entries(o.byCountry).map(([k, v]) => ({ country: k, section: v }))
+          : [{ country: '', section: '' }],
+        _countries: ['Americans', 'Alliance', 'French', 'Germans', 'British',
+                     'Russians', 'Confederation', 'Africans', 'Arabs', 'YuriCountry']
+      };
+      return s;
+    });
+    render();
+    status('ok', '已载入 ' + scripts.length + ' 个脚本。');
+  } catch (e) {
+    status('err', '载入失败：' + e.message);
+  }
+  ev.target.value = '';
+});
+
+// --- C# skeleton generator -------------------------------------------------
+//
+// The JSON editor above covers "appearance" scripts. Everything else (per-frame
+// logic, firing, damage, ...) needs real C#, so this emits a compilable skeleton
+// with only the chosen events overridden.
+//
+// The using list is deliberately complete and commented: the first version of
+// this project's docs shipped examples missing
+//   Extension.Utilities      (ExtensionReference)
+//   PatcherYRpp.Utilities    (MathEx)
+// and they failed to compile when actually dropped into the game.
+
+const CS_EVENTS = {
+  OnUpdate: {
+    sig: 'public override void OnUpdate()',
+    body: '// 每帧调用。'
+  },
+  OnFire: {
+    sig: 'public override void OnFire(Pointer<AbstractClass> pTarget, int weaponIndex)',
+    body: '// 开火时调用。pTarget 是目标，weaponIndex 是武器序号。'
+  },
+  OnReceiveDamage: {
+    sig: 'public override void OnReceiveDamage(Pointer<int> pDamage, int distanceFromEpicenter,\n'
+       + '            Pointer<WarheadTypeClass> pWH, Pointer<ObjectClass> pAttacker, bool ignoreDefenses,\n'
+       + '            bool preventPassengerEscape, Pointer<HouseClass> pAttackingHouse)',
+    body: '// 受伤时调用。pDamage 指向伤害值（改它可以改伤害）。'
+  },
+  OnPut: {
+    sig: 'public override void OnPut(CoordStruct coord, Direction faceDir)',
+    body: '// 单位出现在世界上时调用一次。'
+  },
+  OnRemove: {
+    sig: 'public override void OnRemove()',
+    body: '// 单位被移除时调用。'
+  }
+};
+
+function buildCs() {
+  const cls = (el('csClass').value || 'MyScript').trim().replace(/[^A-Za-z0-9_]/g, '');
+  const name = cls || 'MyScript';
+
+  const picked = Array.from(document.querySelectorAll('#csEvents input:checked'))
+    .map(x => x.value);
+
+  let methods = '';
+  for (const key of picked) {
+    const ev = CS_EVENTS[key];
+    if (!ev) continue;
+    methods += '\n        ' + ev.sig + '\n'
+             + '        {\n'
+             + '            ' + ev.body + '\n'
+             + '            /* TODO: 你的逻辑 */\n'
+             + '        }\n';
+  }
+
+  if (!methods) methods = '\n        // 没有勾选任何事件。\n';
+
+  return '// 由 Karst 脚本编辑器生成\n'
+       + '// 放到 <游戏目录>\\KarstPatcher\\Scripts\\ 下即可\n'
+       + '\n'
+       + 'using System;\n'
+       + 'using DynamicPatcher;            // Logger\n'
+       + 'using Extension.Ext;             // TechnoExt\n'
+       + 'using Extension.Script;          // TechnoScriptable\n'
+       + 'using Extension.Utilities;       // ExtensionReference（保存别的对象时要用）\n'
+       + 'using PatcherYRpp;               // Pointer<T>、CoordStruct 等\n'
+       + 'using PatcherYRpp.Utilities;     // MathEx（随机数等）\n'
+       + '\n'
+       + 'namespace Scripts\n'
+       + '{\n'
+       + '    public class ' + name + ' : TechnoScriptable\n'
+       + '    {\n'
+       + '        public ' + name + '(TechnoExt owner) : base(owner) { }\n'
+       + methods
+       + '    }\n'
+       + '}\n';
+}
+
+function updateCs() {
+  const code = buildCs();
+  el('out').textContent = code;
+
+  const binding = (el('csBinding').value || '').trim();
+  const cls = (el('csClass').value || 'MyScript').trim().replace(/[^A-Za-z0-9_]/g, '');
+
+  const problems = [];
+  if (!cls) problems.push('类名不能为空');
+
+  if (problems.length) status('warn', problems.join('；'));
+  else status('ok', '骨架已生成。绑定行：' + (binding ? binding + ' Scripts=' + cls : '（未填单位段）'));
+}
+
+el('csBuild').addEventListener('click', updateCs);
+el('csClass').addEventListener('input', updateCs);
+document.querySelectorAll('#csEvents input').forEach(x => x.addEventListener('change', updateCs));
+
+el('csDownload').addEventListener('click', () => {
+  const cls = (el('csClass').value || 'MyScript').trim().replace(/[^A-Za-z0-9_]/g, '') || 'MyScript';
+  const blob = new Blob([buildCs()], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = cls + '.cs';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  status('ok', '已下载 ' + cls + '.cs —— 放进 KarstPatcher\\Scripts\\ 即可。');
+});
+
+// --- start -----------------------------------------------------------------
+loadLists();
+scripts.push({
+  mode: 'look', building: '', look: '', footprint: 'follow',
+  byCountry: [{ country: '', section: '' }],
+  _countries: ['Americans', 'Alliance', 'French', 'Germans', 'British',
+               'Russians', 'Confederation', 'Africans', 'Arabs', 'YuriCountry']
+});
+render();
+
+if (!window.showSaveFilePicker) {
+  el('saveHint').textContent = '提示：这个浏览器不支持“保存到文件夹”，用“下载”然后手动放进 Karst\\scripts\\。';
+}
+</script>
+</body>
+</html>

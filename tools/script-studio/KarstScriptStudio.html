@@ -1,0 +1,2306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Karst 脚本工作室</title>
+<!--
+  ===========================================================================
+   Karst 脚本工作室 (Karst Script Studio)
+  ===========================================================================
+   A single self-contained page that builds C# scripts for Karst out of blocks
+   and manages them in <game>\KarstPatcher\Scripts.
+
+   BUILD: karst\tools\script-studio\build_studio.ps1
+     studio.template.html + blocks\*.js + rulesmd/artmd data -> KarstScriptStudio.html
+
+   OPEN IT IN A REAL BROWSER WINDOW. This is not a stylistic preference:
+   an embedded preview pane (an IDE's HTML preview) treats a file:// page as a
+   sandboxed document and refuses showDirectoryPicker, downloads and the
+   clipboard. Measured, see Karst\docs\HANDOFF5.md §3.3. The page detects that
+   case and says so instead of failing generically.
+
+   The block library and the code generator live in blocks\*.js and are inlined
+   here at build time; this file only wires up the UI. Anything about *what a
+   block generates* belongs in registry.js, not here.
+  ===========================================================================
+-->
+<style>
+  :root {
+    --bg:#1b1f24; --panel:#232830; --panel2:#1e232a; --line:#333a44; --fg:#e6e9ee;
+    --dim:#97a1b0; --accent:#4a9eff; --accent2:#2d6fbf; --ok:#3fb950; --warn:#d29922;
+    --err:#f85149; --cond:#c084fc; --act:#4ade80; --condbg:#2a2338; --actbg:#1f2f26;
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; font:13px/1.55 "Segoe UI","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--fg); overflow:hidden; }
+
+  /* ---------- header ---------- */
+  header { padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line);
+           display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:15px; font-weight:600; white-space:nowrap; }
+  header .stamp { color:var(--dim); font-size:11px; }
+  .spacer { flex:1; }
+  .dirstate { font-size:12px; padding:3px 8px; border-radius:10px; background:#2a2f37;
+              color:var(--dim); white-space:nowrap; }
+  .dirstate.on { background:#14331c; color:#7ee787; }
+  .dirstate.warn { background:#3a3218; color:#f0d070; }
+
+  /* ---------- generic controls ---------- */
+  button { padding:5px 10px; background:var(--accent); color:#fff; border:0; border-radius:4px;
+           font:inherit; font-size:12px; cursor:pointer; white-space:nowrap; }
+  button.sec { background:#39414d; }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--dim); }
+  button.danger { background:#5a2a2a; }
+  button:hover { filter:brightness(1.15); }
+  button:disabled { opacity:.45; cursor:not-allowed; filter:none; }
+  button.mini { padding:1px 6px; font-size:11px; background:#39414d; }
+  input, select, textarea { padding:4px 7px; background:#171b21; color:var(--fg);
+        border:1px solid var(--line); border-radius:4px; font:inherit; font-size:12px; }
+  input:focus, select:focus, textarea:focus { outline:1px solid var(--accent2); }
+  input[type=number] { width:88px; }
+  label { font-size:11px; color:var(--dim); }
+  code { background:#171b21; padding:1px 4px; border-radius:3px; font-size:12px; }
+
+  /* ---------- layout ---------- */
+  .layout { display:grid; grid-template-columns:236px minmax(380px,1fr) minmax(360px,460px);
+            height:calc(100% - 45px); }
+  @media (max-width:1200px) { .layout { grid-template-columns:220px 1fr; }
+                              #side { display:none; } }
+  .col { overflow-y:auto; padding:12px; }
+  #library { background:var(--panel2); border-right:1px solid var(--line);
+             overflow-x:hidden; }
+  #work { border-right:1px solid var(--line); }
+  #side { background:var(--panel2); display:flex; flex-direction:column; gap:10px; }
+  .coltitle { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim);
+              margin:0 0 8px; font-weight:600; }
+
+  /* ---------- library ---------- */
+  .libgroup { margin-bottom:14px; }
+  .libgroup > h3 { margin:0 0 6px; font-size:12px; color:var(--dim); font-weight:600;
+                   display:flex; align-items:center; gap:6px; }
+  .libgroup > h3 .dot { width:8px; height:8px; border-radius:50%; }
+  .libgroup.ev > h3 .dot { background:var(--accent); }
+  .libgroup.cond > h3 .dot { background:var(--cond); }
+  .libgroup.act > h3 .dot { background:var(--act); }
+  .libitem { display:block; width:100%; text-align:left; background:#272d36; color:var(--fg);
+             border:1px solid var(--line); border-left:3px solid var(--line); border-radius:4px;
+             padding:5px 8px; margin-bottom:4px; font-size:12px; cursor:pointer;
+             /* the hints are full sentences and must wrap inside the 236px
+                column; without this they were clipped at the edge */
+             white-space:normal; overflow-wrap:anywhere; }
+  .libitem:hover { background:#2f3742; border-left-color:var(--accent); }
+  .libitem.cond { border-left-color:var(--cond); }
+  .libitem.act { border-left-color:var(--act); }
+  .libitem .sub { display:block; color:var(--dim); font-size:10px; margin-top:1px; }
+  .libitem.disabled { opacity:.4; cursor:not-allowed; }
+
+  /* ---------- work area ---------- */
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:7px;
+          padding:11px; margin-bottom:11px; }
+  .card h2 { margin:0 0 9px; font-size:12px; color:var(--dim); text-transform:uppercase;
+             letter-spacing:.05em; }
+  .fieldrow { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+  .fieldrow > div { display:flex; flex-direction:column; gap:3px; }
+  .fieldrow input, .fieldrow select { min-width:120px; }
+
+  .evcard { border:1px solid var(--line); border-left:3px solid var(--accent);
+            border-radius:6px; margin-bottom:10px; background:#20252c; }
+  .evcard.active { border-color:var(--accent2); box-shadow:0 0 0 1px var(--accent2); }
+  .evhead { display:flex; align-items:center; gap:8px; padding:7px 10px; cursor:pointer;
+            border-bottom:1px solid var(--line); }
+  .evhead .nm { font-weight:600; }
+  .evhead .mini2 { color:var(--dim); font-size:11px; flex:1; }
+  .evbody { padding:9px 10px; }
+  .zone { margin-bottom:8px; }
+  .zonehead { font-size:11px; color:var(--dim); margin-bottom:5px; display:flex;
+              align-items:center; gap:6px; }
+  .zonehead .tag { padding:0 5px; border-radius:3px; font-size:10px; }
+  .zone.cond .zonehead .tag { background:var(--condbg); color:var(--cond); }
+  .zone.act .zonehead .tag { background:var(--actbg); color:var(--act); }
+  .evnote { font-size:11px; color:var(--warn); background:#2c2716; border-radius:4px;
+            padding:4px 7px; margin-bottom:7px; }
+
+  .blk { border:1px solid var(--line); border-radius:5px; margin-bottom:5px; background:#1c2127; }
+  .blk.cond { border-left:3px solid var(--cond); }
+  .blk.act { border-left:3px solid var(--act); }
+  .blkhead { display:flex; align-items:center; gap:6px; padding:4px 8px; }
+  .blkhead .t { font-size:12px; flex:1; }
+  .blkhead .idx { color:var(--dim); font-size:10px; }
+  .blkargs { padding:0 8px 7px 8px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .blkargs label { display:flex; align-items:center; gap:4px; }
+  .blkhint { font-size:10px; color:var(--dim); padding:0 8px 6px; }
+  .empty { color:var(--dim); font-size:12px; padding:6px 2px; }
+
+  .picker { border:1px dashed var(--line); border-radius:5px; padding:7px; margin-bottom:6px;
+            background:#1a1e24; }
+  .picker .ph { font-size:11px; color:var(--dim); margin-bottom:5px; }
+  .picker .opts { display:flex; flex-wrap:wrap; gap:4px; }
+
+  /* ---------- side ---------- */
+  #side .grow { flex:1; min-height:0; display:flex; flex-direction:column; }
+  pre.code { flex:1; margin:0; padding:10px; background:#11141a; border:1px solid var(--line);
+             border-radius:6px; overflow:auto; font:11.5px/1.5 Consolas,"Cascadia Mono",monospace;
+             white-space:pre; color:#cfe3ff; }
+  .status { padding:7px 9px; border-radius:5px; font-size:12px; display:none; }
+  .status.show { display:block; }
+  .status.ok { background:#14331c; color:#7ee787; }
+  .status.err { background:#3a1a1a; color:#ff9b95; }
+  .status.warn { background:#3a3218; color:#f0d070; }
+  .status ul { margin:4px 0 0; padding-left:18px; }
+  .status li { margin:1px 0; }
+  .filelist { max-height:190px; overflow:auto; }
+  .filerow { display:flex; align-items:center; gap:6px; padding:3px 5px; border-radius:4px;
+             font-size:12px; }
+  .filerow:hover { background:#2a3038; }
+  .filerow .fn { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .filerow .off { color:var(--warn); font-size:10px; }
+  .filerow.cur { background:#1d2b3a; }
+  .filerow.cur .fn { color:var(--accent); font-weight:600; }
+  .hint { font-size:11px; color:var(--dim); }
+  .bindline { font:11.5px/1.5 Consolas,monospace; background:#11141a; border:1px solid var(--line);
+              border-radius:5px; padding:7px; white-space:pre; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Karst 脚本工作室</h1>
+  <span class="stamp">数据来源：E:\_game\RA2\yr_karst_test_2（武器 269、弹头 154、动画 1667、单位/建筑 559）</span>
+  <span class="spacer"></span>
+  <span class="dirstate" id="dirState">未选择脚本目录</span>
+  <button id="btnPickDir">选择脚本目录…</button>
+  <button class="sec" id="btnReloadPerm" style="display:none">重新授权</button>
+  <button class="ghost" id="btnOpenFile">打开 .cs 文件…</button>
+  <input type="file" id="fileInput" accept=".cs,.txt" style="display:none">
+  <button class="ghost" id="btnNew">新建</button>
+</header>
+
+<div class="layout">
+
+  <!-- ======================= 左：积木库 ======================= -->
+  <aside class="col" id="library">
+    <p class="coltitle">积木库</p>
+    <p class="hint" style="margin-top:-4px">
+      点一下积木，就加到右边<b>当前事件</b>里。先在中间加一个事件积木。
+    </p>
+    <div id="libEvents" class="libgroup ev"><h3><span class="dot"></span>事件（什么时候跑）</h3></div>
+    <div id="libConds" class="libgroup cond"><h3><span class="dot"></span>条件（什么时候才执行）</h3></div>
+    <div id="libActs" class="libgroup act"><h3><span class="dot"></span>动作（做什么）</h3></div>
+  </aside>
+
+  <!-- ======================= 中：工作区 ======================= -->
+  <main class="col" id="work">
+    <div class="card">
+      <h2>脚本</h2>
+      <div class="fieldrow">
+        <div>
+          <label>类名（rulesmd.ini 里 Scripts= 填的值，大小写敏感）</label>
+          <input id="clsInput" value="MyScript" spellcheck="false">
+        </div>
+        <div>
+          <label>绑定到哪个单位（只帮你生成那一行，不改规则文件）</label>
+          <input id="bindInput" list="dl-units" placeholder="MTNK" spellcheck="false">
+        </div>
+      </div>
+      <p class="hint" id="bindOut" style="margin-bottom:0"></p>
+    </div>
+
+    <div id="events"></div>
+
+    <div class="card">
+      <button class="sec" id="btnAddFirst">+ 添加事件积木</button>
+      <span class="hint" style="margin-left:8px">事件决定"什么时候跑"，一个脚本可以有多个事件。</span>
+    </div>
+
+    <div class="card">
+      <h2>这个目录里的脚本</h2>
+      <div class="filelist" id="fileList">
+        <p class="hint">还没有选择脚本目录。点右上角"选择脚本目录…"，指向
+          <code>&lt;游戏目录&gt;\KarstPatcher\Scripts</code>。</p>
+      </div>
+      <p class="hint" id="fileHint"></p>
+    </div>
+  </main>
+
+  <!-- ======================= 右：代码与保存 ======================= -->
+  <section class="col" id="side">
+    <div class="grow">
+      <p class="coltitle">生成的代码（实时）</p>
+      <pre class="code" id="codeOut"></pre>
+    </div>
+
+    <div>
+      <div class="status" id="status"></div>
+      <div class="fieldrow" style="margin-top:8px">
+        <button id="btnSave">保存到脚本目录</button>
+        <button class="sec" id="btnDownload">下载 .cs</button>
+        <button class="sec" id="btnCopy">复制代码</button>
+      </div>
+      <p class="hint" id="saveHint" style="margin-bottom:0"></p>
+      <div style="margin-top:8px">
+        <label>绑定行（贴到 rulesmd.ini 对应小节的下面）</label>
+        <div class="bindline" id="bindLine">—</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 游戏数据下拉建议（由 JS 填充，避免页面上塞几千个节点） -->
+<datalist id="dl-units"></datalist>
+<datalist id="dl-weapons"></datalist>
+<datalist id="dl-warheads"></datalist>
+
+<script>
+var KARST_DATA = {
+  "source": "E:\\_game\\RA2\\yr_karst_test_2",
+  "weapons": ["105mm","105mmE","120HE","120mm","120mmE","120mmx","120mmxE","155mm","155mmE","160mm","160mmE","20mm","20mmE","20mmRapid","20mmRapidE","75mm","90mm","90mmE","AAGattCann","AAGattCann2","AAGattCann3","AAGattling","AAGattling2","AAGattling2E","AAGattling3","AAGattling3E","AAGattlingE","AAGattlingE;90mmE","AGGattling","AGGattling2","AGGattling2E","AGGattling3","AGGattling3E","AGGattlingE","AGGattlingE;90mmE","AKM","AKME","AlligatorBite","AssaultBolt","AssaultCannon","ASWBomb","ASWCollision","ASWLauncher","ATGUN","ATGUNE","ATGUNE;90mmE","AWP","AWPE","BadTeeth","BarrelExplosion","BAZOOKA","BearBite","BikeMissile","BlackHawkCannon","BlackHawkCannonE","BlimpBomb","BlimpBombE","BlimpBombEffect","Bomb","BoomerTorpedo","BoomerTorpedoE","ChaosAttack","ChemLauncher","ChimpBite","ChronoMP5","ChronoMP5E","CLINTGUN","CoilBolt","Comet","CometFragment","CowShot","CRAWP","CRBAZOOKA","CRElectricBolt","CRFlakGuyGun","CRM1Carbine","CRM60","CRMakeupKit","CRMindControl","CRMissileLauncher","CRMP5","CRNeutronRifle","CRNuke","CRPsychicJab","CRRadBeamWeapon","CRSuperMindBlast","CRTerrorBomb","CruiseLauncher","CruiseLauncher;CruiseMissile","CruiseMissile","CRVirusGun","CyCannon","DefaultDeathWeapon","DefuseKit","Demobomb","DiskDrain","DiskLaser","DiskLaserE","DoublePistols","DoublePistolsE","Dragon","DredCollision","DredLauncher","DroneJump","EiffelBolt","EiffelBolt ; of DEATH","ElectricBolt","ElectricBoltE","ElectricFragment","EMPulseWeapon","FakeC4","FakeC4 ; otherwise he can teleport into a building and kill it before he unwarps.","FiendShard","FireballLauncher","FlakGuyAAGun","FlakGuyAAGunE","FlakGuyGun","FlakGuyGunE","FlakTrackAAGun","FlakTrackAAGunE","FlakTrackGun","FlakTrackGunE","FlakWeapon","FlakWeaponE","Flare","Gattling","GoodTeeth","GrandCannonWeapon","Grenade","HarpyClaw","Heal","Hellfire","HornetBomb","HornetBombE","HornetCollision","HornetLauncher","HoverMissile","HoverMissile2","HoverMissile2e","HoverMissileE","HowitzerGun","IvanBomber","IvanBomberE","JumpCannon","LaserFire","LaserFire2","LtRail","Lunarlaser","M1Carbine","M1CarbineE","M60","M60E","MagneShake","MagneticBeam","MagneticBeamE","MakeupKit","MakeupKit ; virtual weapon that picks disguise","MammothTusk","Maverick","Maverick2","Maverick2E","Maverick3","Maverick3E","MaverickE","MayanPrism","MechRailgun","Medusa","MedusaE","MindControl","MindControlE","Minigun","MirageGun","MirageGunE","MissileLauncher","MissileLauncher ;GEF New Guardian GI weapon","MissileLauncherE","MissileLauncherE ;GEF New Guardian GI weapon","MP5","MP5E","MultipleMindControlTank","MultipleMindControlTower","Mummypunch","Mummysmash","NeutronRifle","NeutronRifleE","none","Nukebomb","NukeCarrier","NukePayload","OilExplosion","OPCoilBolt","OutpostMachineGun","Para","ParaDropWeapon","ParaDropWeapon	; Doesn't really fire it; dummy weapon","ParaE","Pistola","PrismShot","PrismSupport","Proton","PsiWave","PsychicJab","PsychicJabE","Punch","PunchE","QuadCannon","RadBeamWeapon","RadBeamWeaponE","RadEruptionWeapon","RaiderCannon","RedEye2","RepairBullet","Robogun","RPGTower","SABOT","SABOTE","Sapper","SHOVEL","SlimeAttack","Smash","SmashE","Sniper","SonicZap","SonicZapE","SpyCameraWeapon","SquidGrab","SquidGrab ; HCB + Punch","SquidGrabE","SquidPunch","SquidPunch ; F, F, Punch","SquidPunchE","STALGREN","STALGUN","SubTorpedo","SubTorpedoE","SuicideBomb","SuperComet","SuperCometFragment","SuperCometFragment ;Like [WEEDGUY] this just instantiates more weapons","SuperMindControl","SuperPsiWave","TankBolt","TankBoltE","TankMakeupKit","TERMIGUN","TerrorBomb","TeslaFragment","TRexBite","TRexBite;VirtualScanner","TRexInfBite","UCEliteM1Carbine","UCElitePara","UCElitePsychicJab","UCM1Carbine","UCPara","UCPsychicJab","V3Airburst","V3Cluster","V3Cluster ;gs Looks like hack is weapons must be represented once","V3Launcher","VirtualScanner","VirtualScanner ; gs the computer uses range to determine what buildings to run to and capture","Virusgun","VirusgunE","Vulcan","Vulcan2","Vulcan3","VulcanTower","Yuribustshot"],
+  "warheads": ["AirstrikeFlare","AntiB","AntiB ;Anti-Building warhead","AntiPerson ; anti-person warhead for floating disk","AP","ApocAP","ApocAP  ;for Apocalypse so he can be better at killing base defenses.","ApocAPE","APSplash","APSplash ; AP with extra fudge factor for missiles that have trouble hitting","APSplash2","ARTYHE","Battering","BlimpHE","BlimpHEEffect","BombDisarm","BombDisarm ; Takes off Ivan Bombs","BORISWH","ChronoBeam","CMISLEWH ; Cruise Missile's elite","CMISLWH ; GEF Cruise Missile's warhead","CometWH","Controller","ControllerBuilding","ControllerBuilding ;Yuri Prime version that can capture buildings","CRNUKEWH","CRTerrorBombWH ;the terroists warhead when in an IFV","Crush","DeathWH","DeathWH ; unit death collateral damage, all use this on death if Explodes==yes","DemobombWH","DemobombWH ;Warhead for the Demolition Truck's Demobomb weapon - DB","DiskWH","DMISLEWH ; Dred's elite","DMISLWH ; SJM DredMissile's warhead","DominatorWH","DummyWarhead","Electric","ElectricAssault","ElectricAssault ; Trooper's short range grab","EMPuls","FakeC4WH","FakeC4WH ; Chrono Commando's fake C4","Fire","FirestormWH","FlakGuyWH","FlakGuyWH ;for the AA weapon of the Flak Trooper","FlakTWH","FlakTWH			; Flak Track anti-surface gun warhead","FlakWH","FlakWH			; Flak Weapon warhead","Gas","GattWH","GrandCannonWH","GRIZAPE","GUARDWH","GUARDWH ;Guardian GI warhead","HARVWH","HARVWH ;Harv Warhead","HE","HollowPoint","HollowPoint2","HollowPoint3","HollowPoint4","HollowPointNoBuilding","HollowPointNoBuilding ; has 0% on building instead of 1%","HowitzerWH","IonCannonWH","IonWH","IvanBomb","IvanBomb ; Placing of the bomb through attack","IvanWH ; Actual exploding of the bomb","KTSTLEXP","LocomotorBeam","LocomotorBeam ; Warhead for the Magnetron","LUNARWH","LUNARWH ;Warhead for the Lunar Infantry Laser","MagneShakeWH","MaverickHE","Mechanical","Mechanical;gs please do not use the warhead marked \"do not use\" Super","Meteorite","MIGWH","MIGWH ; Warhead for the MIGs called in by Boris.","MirageWH","MirageWH	; SJM: Heat-ray warhead for Mirage Tank.","Mutate","MutateExplosion","NUKE","NUKE ; new multimissile","NukeB","NukeMaker","NukeMaker ; virtual WH that spawns the down nuke on explosion","OilExplosionWH","OilExplosionWH ; for Oil derrick's deathweapon","ORCAAP","ORCAHE","Organic","Parasite","Parasite ; Terror Drone thing","ParasiteDog ; Infantry only affecting version of Parasite","ParasiteDog ; infantry only version","ParasitePlus ; Parasite warhead that paralyzes","ParasitePlus ; Plus paralysis","PJABWH","PlasmaWH","PrismWarhead","PsiPulse","PsychGas","PsychGasCreate","RadBeamWarhead","RadEruptionWarhead","RadSite","RailShot","RailShot2","RHINAPE","RPG","SA","SAFlame","SAMWH","SCHOPWH","Shard","Shock","Slimer","Smashing","Smashing ; Brute's secondary tank smashing attack","Snapshot","Snapshot ; takes picture for disguise making","SonicWarhead","Special","SSA","SSAB","SSAB ;For buildings so they can shoot air","SSABFlame","Super","SuperPsiPulse","TankOGas","TankSnapshot","TerrorBombWH","TerrorBombWH ;The terrorists warhead","TRexInfWH","TRexInfWH;  need to change InfDeath  HowitzerWH","TRexWH","TRexWH;  need to change InfDeath  HowitzerWH","UltraAP","UltraAPE","V3EWH ; V3 elite","V3HE","V3HE ; Variation of HE that has a one cell spread","V3WH ; SJM V3's warhead","VeinholeWH","Virus","Virus;HollowPoint","VirusGas"],
+  "projectiles": ["AAHeatSeeker","AAHeatSeeker2","AAHeatSeeker2 ; was HeatSeeker","AAHeatSeeker2 ; will be ASW shaped bullet","AAHeatSeeker2 ; will be Hornet shaped bullet","AAHeatSeeker2	;AirToGroundMissile","ADOGJUMP","AirToGroundMissile ;GEF was AAHeatSeeker2 ; was HeatSeeker","ASWVirt","Ballistic","BlimpBombP","Cannon","Cannon2","ChemMissile","ClusterBits","DepthCharge","DOGJUMP","DogShard","DredMissile","Electricbounce","FlakProj	; AA bullet shared with Flak Cannon","FlakProj	; AA bullet shared with Flak Track","FlakTProj","GiantNukeDown  ;MultiMissile","GiantNukeUp","GrandCannonBall","HeatSeeker","Invisible","Invisible;Invisible5","Invisible;LLine2","Invisible2","Invisible3","Invisible3 ;GEF Anti air and anti ground ;SA","Invisible4 ;GEF Anti air ;SA","InvisibleAll","InvisibleHigh","InvisibleLow","Invisiblelow ;GEF Anti ground ;SA","InvisibleLow ;gs ! Dude!  This gives the squid an anti-air weapon! --> was InvisibleAll","InvisibleMedium;GEF Chrono Legionaires can now shoot over walls ;InvisibleLow","InvisibleVertical","JUMP","LargeCometP","LLine","LLine2","Lobbed","Lobbed2","MedusaProjectile","NavalToGroundSeeker","NormalBomb","ProtonBlast","ProtonTorpedo","Psychic","PsychicControl","PulsPr","QuadShell","SmallCometP","SmallTeslaP","Sonic","SQDJUMP","SuperCometP","SuperSmallCometP","Torpedo","V3AirburstP"],
+  "animations": ["120MM","ABAN01","ABAN02","ABAN03","ABAN04","ABAN05","ABAN06","ABAN07","ABAN08","ABAN09","ABAN10","ABAN11","ABAN12","ABAN13","ABAN14","ABAN15","ABAN16","ABAN17","ABAN18","ADOG","ADOGP","AEGIS","ALL","AMBU","AMMO01","AnimalSequence","APOCEXP","ARMOR","ARND","ARRWDEST","ARRWDEST; Boot camp arrows","ARRWE","ARRWN","ARRWNE","ARRWNW","ARRWS","ARRWSE","ARRWSW","ARRWW","ASW","BBBLELRG","BBOARD01","BBOARD02","BBOARD03","BBOARD04","BBOARD05","BBOARD06","BBOARD07","BBOARD08","BBOARD09","BBOARD10","BBOARD11","BBOARD12","BBOARD13","BBOARD14","BBOARD15","BBOARD16","BCAB","BEACON","BEAG","BEHIND","BFRT","BIGBLUE","BORIS","BorisSequence","BOXES01","BOXES02","BOXES03","BOXES04","BOXES05","BOXES06","BOXES07","BOXES08","BOXES09","BPLN","BRIDGB","BRIDGE","BrontSequence","BRRLEXP1","BRRLEXP2","BRUTDIE","BRUTE","BruteSequence","BSUB","BSUBMISL","BURN-L","BURN-M","BURN-S","BURNT01","BURNT02","BURNT03","BURNT04","BURNT05","BURNT06","BURNT07","BURNT08","BURNT09","BURNT10","BURNT11","BURNT12","BUS","CA0001","CA0002","CA0003","CA0004","CA0005","CA0006","CA0007","CA0008","CA0009","CA0010","CA0011","CA0012","CA0013","CA0014","CA0015","CA0016","CA0017","CA0018","CA0019","CA0020","CA0021","CAAIRP","CAAIRP_A","CAAIRP_AD","CAAIRP_F","CAARAY","CAARAY_A","CAARAY_B","CAARAY_C","CAARAY_CD","CAARAY_D","CAARAY_DD","CAARMR","CAARMR_A","CAARMY01","CAARMY02","CAARMY03","CAARMY04","CABARN02","CABARR01","CABARR02","CABHUT","CABUNK01","CABUNK02","CABUNK03","CABUNK04","CACH06DM","CACHIG01","CACHIG02","CACHIG03","CACHIG04","CACHIG04D","CACHIG05","CACHIG06","CACITY01","CACITY02","CACITY03","CACITY04","CACOLO01","CACRSH01","CACRSH02","CACRSH03","CACRSH04","CACRSH05","CACUFGL","CACUFGL_A","CAEAST01","CAEAST01DM","CAEAST02","CAEGYP01","CAEGYP02","CAEGYP03","CAEGYP04","CAEGYP05","CAEGYP06","CAEUR04","CAEUR1","CAEUR2","CAEURO05","CAFARM01","CAFARM02","CAFARM06","CAFNCB","CAFNCP","CAFNCW","CAFRFGL","CAFRFGL_A","CAFRMA","CAFRMB","CAGARD01","CAGAS01","CAGEFGL","CAGEFGL_A","CAGRD1_A","CAHOSP","CAHOSP_A","CAHOSP_AD","CAHOSP_F","CAHSE01","CAHSE02","CAHSE03","CAHSE04","CAHSE05","CAHSE06","CAHSE07","CAIND01","CAIRFGL","CAIRFGL_A","CAKRMW","CALA01","CALA03","CALA04","CALA05","CALA06","CALA07","CALA08","CALA09","CALA10","CALA10_A","CALA10_AD","CALA11","CALA12","CALA13","CALA14","CALA15","CALAB","CALBFGL","CALBFGL_A","CALIT01E","CALIT01N","CALIT01S","CALIT01W","CALIT02L","CALIT02R","CALIT03E","CALIT03N","CALIT03S","CALIT03W","CALND6_A","CALND6_AD","CALOND01","CALOND03","CALOND04","CALOND05","CALOND06","CALUNR01","CALUNR02","CAMACH","CAMACH_F","CAMEX01","CAMEX02","CAMEX03","CAMEX04","CAMEX05","CAMIAM01","CAMIAM02","CAMIAM03","CAMIAM04","CAMIAM05","CAMIAM06","CAMIAM07","CAMIAM08","CAMISC01","CAMISC02","CAMISC03","CAMISC04","CAMISC05","CAMISC06","CAML","CAMOON01","CAMORR01","CAMORR02","CAMORR03","CAMORR04","CAMORR05","CAMORR06","CAMORR07","CAMORR08","CAMORR09","CAMORR10","CAMOV01","CAMOV01_A","CAMOV01_AD","CAMOV02","CAMOV02_A","CAMOV02_AD","CAMSC01","CAMSC02","CAMSC03","CAMSC04","CAMSC05","CAMSC06","CAMSC06A","CAMSC07","CAMSC08","CAMSC09","CAMSC10","CAMSC11","CAMSC12","CAMSC13","CANEWY01","CANEWY04","CANEWY05","CANEWY06","CANEWY07","CANEWY08","CANEWY10","CANEWY11","CANEWY12","CANEWY13","CANEWY14","CANEWY15","CANEWY16","CANEWY17","CANEWY18","CANEWY20","CANEWY21","CANWY05","CANWY09","CANWY22","CANWY23","CANWY24","CANWY25","CANWY26","CANY04DM","CAOILD","CAOILD_A","CAOILD_AD","CAOILD_F","CAOS","CAOUTP","CAOUTP_A","CAOUTP_AD","CAOUTP_B","CAOUTP_BD","CAOUTP_C","CAOUTP_CD","CAOUTP_D","CAOUTP_DD","CAOUTP_F","CAPARK01","CAPARK02","CAPARK03","CAPARK04","CAPARK05","CAPARK06","CAPARS01","CAPARS02","CAPARS04","CAPARS05","CAPARS06","CAPARS07","CAPARS08","CAPARS09","CAPARS10","CAPARS11","CAPARS12","CAPARS12D","CAPARS13","CAPARS14","CAPOFGL","CAPOFGL_A","CAPOL01E","CAPOL01N","CAPOL01S","CAPOL01W","CAPOWR","CAPOWR_A","CAPOWR_AD","CAPR01DM","CAPR11DM","CAPRS03","CAPYR01","CAPYR02","CAPYR03","CAR","CARGOCAR","CARRIER","CARUFGL","CARUFGL_A","CARUS01","CARUS01D","CARUS02A","CARUS02B","CARUS02C","CARUS02D","CARUS02E","CARUS02F","CARUS02G","CARUS03","CARUS04","CARUS05","CARUS06","CARUS07","CARUS08","CARUS09","CARUS10","CARUS11","CARYLAND","CASANF01","CASANF02","CASANF03","CASANF04","CASANF05","CASANF06","CASANF07","CASANF08","CASANF09","CASANF10","CASANF11","CASANF12","CASANF13","CASANF14","CASANF15","CASANF16","CASANF17","CASANF18","CASEAT01","CASEAT02","CASEAT02_A","CASEAT02_AD","CASIN01E","CASIN01N","CASIN01S","CASIN01W","CASIN03E","CASIN03S","CASKFGL","CASKFGL_A","CASLAB","CASLAB_A","CASLAB_F","CASTL01","CASTL02","CASTL03","CASTL04","CASTL04DM","CASTL05A","CASTL05B","CASTL05C","CASTL05D","CASTL05E","CASTL05F","CASTL05G","CASTL05H","CASTRT01","CASTRT02","CASTRT03","CASTRT04","CASTRT05","CASWST01","CASYDN02","CASYDN03","CATECH01","CATEXS01","CATEXS02","CATEXS03","CATEXS04","CATEXS05","CATEXS06","CATEXS07","CATEXS08","CATHOSP","CATIME_A","CATIME_AD","CATIME01","CATIME02","CATR03DM","CATRAN01","CATRAN02","CATRAN03","CATS01","CAUKFGL","CAUKFGL_A","CAURB01","CAURB02","CAURB03","CAUSFGL","CAUSFGL_A","CAWA14DM","CAWA15DM","CAWA19_A","CAWA19_AD","CAWA19_AG","CAWA2A","CAWA2B","CAWA2C","CAWA2D","CAWASH01","CAWASH03","CAWASH04","CAWASH05","CAWASH06","CAWASH07","CAWASH08","CAWASH09","CAWASH10","CAWASH11","CAWASH13","CAWASH14","CAWASH15","CAWASH16","CAWASH17","CAWASH18","CAWASH19","CAWS01DM","CAWSH12","CAWSH12A","CAWSH12D","CAWSH18A","CAWT01","CBLC","CCOMAND","CDEST","CDGAS","CHEMISLE","CHRONOAR","CHRONOBM","CHRONOFD","CHRONOFD	; SJM","CHRONOSK","CHRONOTG","CHRONOTG	; SJM","CITY01","CITY02","CITY03","CITY04","CITY05","CITY06","CITY07","CITY08","CITY09","CITY10","CITY11","CITY12","CITY13","CITY14","CITY15","CITY16","CITY17","CITY18","CITY19","CITY20","CITY21","CITY22","CIV1","CIV2","Civ2Sequence","CIV3","CIVA","CIVAN","CIvanSequence","CIVB","CIVBBP","CIVBF","CIVBFM","CIVBTM","CIVC","CivGunSequence","CIVP","CivSequence","CIVSF","CIVSFM","CIVSTM","CLEG","ClegSequence","CLNT","CLOAK","CMIN","CMON","ComandoSequence","CONA","CONS","ConSequence","COP","COW","CRATE","CRATER01","CRATER02","CRATER03","CRATER04","CRATER05","CRATER06","CRATER07","CRATER08","CRATER09","CRATER10","CRATER11","CRATER12","CRIVEXP","CRIVEXP2","CRUISE","CRYSTAL1","CRYSTAL2","CRYSTAL3","CRYSTAL4","CTDAM","CTDAM_A","CTDAM_AD","CTDAM_B","CTDAM_BD","CTVEGA","CyborgSequence","DBRIS1HV","DBRIS1LG","DBRIS1SM","DBRIS2HV","DBRIS2LG","DBRIS2SM","DBRIS3HV","DBRIS3LG","DBRIS3SM","DBRIS4LG","DBRIS4SM","DBRIS5LG","DBRIS5SM","DBRIS6LG","DBRIS6SM","DBRIS7LG","DBRIS7SM","DBRIS8LG","DBRIS8SM","DBRIS9LG","DBRIS9SM","DBRI-WM1","DBRI-WM2","DBRI-WM3","DBRI-WM4","DBRI-WM5","DBRI-WM6","DBRS10LG","DBRS10SM","DDBX","DEATH_A","DEATH_B","DEATH_C","DEATH_D","DEATH_E","DEATH_F","DEMTEXP","DESO","DesoSequence","DEST","DISK","DISKRAY","DLPH","DMISL","DNOA","DNOB","DOG","DoggieSequence","DOGP","DogSequence","DOLY","DRAGON","DRED","DREDMISS","DRON","DRONP","DROPEXP","DROPLAND","DROPPOD","DROPPOD2","DURASMOKE","E1Sequence","EINS","EinsSequence","ELECTRO","EMP_FX01","ENGINEER","EngineerSequence","EUROC","EXPLOLB","EXPLOLB		; PCG; Necessary for lightning bolt explosions, so their sounds don't overwhelm the bolt explosions.","EXPLOLRG","EXPLOMED","EXPLOSML","FALC","FENCE01","FENCE02","FENCE03","FENCE04","FENCE05","FENCE06","FENCE07","FENCE08","FENCE09","FENCE10","FENCE11","FENCE12","FENCE13","FENCE14","FENCE15","FENCE16","FENCE17","FENCE18","FENCE19","FENCE20","FENCE21","FENCE22","FIRE01","FIRE01	; SJM: damage fire for buildings","FIRE02","FIRE02	; SJM: damage fire for buildings","FIRE03","FIRE03	; SJM: damage fire for buildings","FIRE3","FIREPOWR","FlakSequence","FLAKT","FLAMEGUY","FORCSHLD","FORTRESS","FPLS","FSAIR","FSGRND","FSIDLE","FTRK","FV","GAAIRC","GAAIRC_A","GAAIRC_AD","GAAIRC_B","GAAIRC_BD","GAAIRC_C","GAAIRC_CD","GAAIRCBB","GAARTY","GACNST","GACNST_A","GACNST_AD","GACNST_B","GACNST_BD","GACSAM","GACSPH","GACSPH_E","GACSPH_ED","GACSPH_F","GACSPH_FD","GACSPH_G","GACSPH_GD","GACSPH_H","GACSPH_HD","GACTWR","GACTWR_A","GACTWR_B","GACTWR_C","GACTWR_D","GADEPT","GADEPT_A","GADEPT_AD","GADEPT_B","GADEPT_BD","GADEPT_C","GADEPT_CD","GADEPT_D","GADEPT_DD","GADPSA","GADPSA_A","GAFSDF","GAFSDF_A","GAFWLL","GAGAP","GAGAP_A","GAGAP_AD","GAGATE_A","GAGATE_B","GAGREEN","GAHPAD","GAHPAD_A","GAHPAD_AD","GAICBM","GAICBM_A","GAKODK","GAKODK_A","GAKODK_AD","GAKODK_B","GAKODK_C","GAKODK_CD","GALITE","GAOLDCC1","GAOLDCC2","GAOLDCC3","GAOLDCC4","GAOLDCC5","GAOLDCC6","GAORE","GAOREP","GAOREP_A","GAOREP_AD","GAPAVE","GAPILE","GAPILE_A","GAPILE_AD","GAPILL","GAPLUG","GAPLUG_A","GAPLUG_B","GAPLUG_BD","GAPLUG_C","GAPLUG_D","GAPLUG_E","GAPLUG_F","GAPOWR","GAPOWR_A","GAPOWR_AD","GAPOWR_B","GAPRIS","GAPRIS_A","GAPRIS_A	; SJM: Prism Cannon Firing Anim","GAPRIS_AD","GAPRIS_AD	; SJM: Prism Cannon Damaged Firing Anim","GAPRIS_B","GAPRIS_B	; SJM: Prism Cannon Active Anim","GAPRIS_BD","GAPRIS_BD	; SJM: Prism Cannon Damaged Active Anim","GARADR","GARADR_A","GARADR_AD","GAREFN","GAREFNBB","GAREFNL1","GAREFNL2","GAREFNL3","GAREFNL4","GAREFNOR","GAROBO","GAROBO_A","GAROBO_AD","GAROCK","GASAND","GASILO","GASILO_A","GASILO_AD","GASILO_B","GASILO_BD","GASPOT","GASPOT_A","GASPOT_AD","GASPST","GASPST_A","GASPST_AD","GATECH","GATECH_A","GATECH_AD","GATICK","GAVULC","GAWALL","GAWEAP","GAWEAP_1","GAWEAP_1D","GAWEAP_2","GAWEAP_2D","GAWEAP_3","GAWEAP_3D","GAWEAP_4","GAWEAP_4D","GAWEAP_A","GAWEAP_AD","GAWEAP_B","GAWEAP_BD","GAWETH","GAWETH_E","GAWETH_ED","GAWETH_F","GAWETH_FD","GAWETH_G","GAWETH_GD","GAWETH_H","GAWETH_HD","GAYARD","GAYARD_A","GAYARD_AD","GAYARD_C","GAYARD_CD","GAYARD_D","GAYARD_DD","GAYARD_S1","GAYARD_S1D","GAYARD_S2","GAYARD_S2D","GAYARD_S3","GAYARD_S3D","GCMUZZLE","GEM01","GEM02","GEM03","GEM04","GEM05","GEM06","GEM07","GEM08","GEM09","GEM10","GEM11","GEM12","GENDEATH","GenericMDSequence","GenSequence","GGI","GI","GISequence","GTGCAN","GTNK","GuardianGISequence","GUNFIRE","H2O_EXP1","H2O_EXP2","H2O_EXP3","HARV","HDSTN01","HEALALL","HEALONE","HeroOneSequence","HeroTwoSequence","HIND","HORNET","HORV","HTK","HTNK","HTRKPUFF","HTRKPUFF ;SJM: explosion for Half-(Flak)-Track anti-surface warhead","HWTZ","HYD","ICE01","ICE02","ICE03","ICE04","ICE05","INFDIE","INIT","INITFIRE","INVISO","IONBEAM","IRONBLST","IRONBLST ;SJM: played upon invocation of Iron Curtain","IRONFX","IRONFX   ;SJM: weapon neutralized by Invulnerability","IVAN","IvanSequence","JEEP","JOSH","KTSTLEXP","LangIdleMDSequence","LCRF","LIMO","LOBRDB01","LOBRDB02","LOBRDB03","LOBRDB04","LOBRDB05","LOBRDB06","LOBRDB07","LOBRDB08","LOBRDB09","LOBRDB10","LOBRDB11","LOBRDB12","LOBRDB13","LOBRDB14","LOBRDB15","LOBRDB16","LOBRDB17","LOBRDB18","LOBRDB19","LOBRDB20","LOBRDB21","LOBRDB22","LOBRDB23","LOBRDB24","LOBRDB25","LOBRDB26","LOBRDB27","LOBRDB28","LOBRDG01","LOBRDG02","LOBRDG03","LOBRDG04","LOBRDG05","LOBRDG06","LOBRDG07","LOBRDG08","LOBRDG09","LOBRDG10","LOBRDG11","LOBRDG12","LOBRDG13","LOBRDG14","LOBRDG15","LOBRDG16","LOBRDG17","LOBRDG18","LOBRDG19","LOBRDG20","LOBRDG21","LOBRDG22","LOBRDG23","LOBRDG24","LOBRDG25","LOBRDG26","LOBRDG27","LOBRDG28","LOBRDGB1","LOBRDGB2","LOBRDGB3","LOBRDGB4","LOBRDGE1","LOBRDGE2","LOBRDGE3","LOBRDGE4","LT_EUR01","LT_EUR02","LT_GEN01","LT_GEN02","LT_GEN03","LT_GEN04","LT_SGN01","LT_SGN02","LT_SGN03","LT_SGN04","LTNK","LUNR","LUNRK1","LUNRK2","LUNRK3","LUNRK4","LUNRK5","LUNRK6","MCV","MedicSequence","MEDUSA","METDEBRI","METLARGE","METLTRAL","METSMALL","METSTRAL","MGUN-E","MGUN-N","MGUN-NE","MGUN-NW","MGUN-S","MGUN-SE","MGUN-SW","MGUN-W","MIND","MINDANIM","MINDANIMR","MININUKE","MISLCHEM","MISLMLTI","MLTIMISL","MONEY","MONOCAR","MONOENG","Movies","MTNK","MummySequence","MUMY","NAAPWR","NAAPWR_A","NAAPWR_AD","NABNKR","NACLON","NACLON_A","NACLON_AD","NACNST","NACNST_A","NACNST_AD","NACNST_B","NACNST_BD","NACNST_C","NACNST_CD","NADEPT","NADEPT_B","NADEPT_BD","NADEPT_C1","NADEPT_C2","NADEPT_C3","NADEPT_C4","NADEPT_C5","NADEPT_C6","NADEPTBB","NAFLAK","NAFNCE","NAGATE_A","NAGATE_B","NAHAND","NAHPAD","NAHPAD_A","NAHPAD_AD","NAINDP","NAINDP_A","NAINDP_AD","NAIRON","NAIRON_A","NAIRON_AD","NAIRON_E","NAIRON_ED","NAIRON_F","NAIRON_FD","NAIRON_G","NAIRON_GD","NAIRON_H","NAIRON_HD","NALASR","NAMISL","NAMISL_E","NAMISL_ED","NAMISL_F","NAMISL_FD","NAMISL_G","NAMISL_GD","NAMISL_H","NAMISL_HD","NAMNTK","NAMNTK_A","NANRCT","NANRCT_A","NANRCT_AD","NANRCT_P","NANRCT_PD","NAOBEL","NAPOST","NAPOST_A","NAPOST_AD","NAPOST_B","NAPOWR","NAPOWR_A","NAPOWR_AD","NAPSIS","NAPSIS_A","NAPSIS_AD","NAPSYA","NAPSYA_A","NAPSYA_AD","NAPSYB","NAPSYB_A","NAPSYB_AD","NAPULS","NAPULS_A","NARADR","NARADR_A","NARADR_AD","NAREFN","NAREFNL1","NAREFNL1D","NAREFNL2","NAREFNL2D","NAREFNL3","NAREFNL3D","NAREFNL4","NAREFNL4D","NAREFNOR","NASAM","NASAM_A","NASTLH","NASTLH_A","NASTLH_AD","NATBNK","NATBNK_A","NATBNK_A2","NATBNK_A2;these two are the first two backwards","NATBNK_A2D","NATBNK_AD","NATBNK_B","NATBNK_B2","NATBNK_B2D","NATBNK_BD","NATECH","NATMPL","NATMPL_A","NATSLA","NATSLA_A","NATSLA_AD","NATSLA_B","NATSLA_B	; SJM: Tesla Coil Firing Anim","NATSLA_BD","NATSLA_BD	; SJM: Tesla Coil Damaged Firing Anim","NAWALL","NAWEAP","NAWEAP_1","NAWEAP_1D","NAWEAP_2","NAWEAP_2D","NAWEAP_3","NAWEAP_3D","NAWEAP_4","NAWEAP_4D","NAWEAP_A","NAYARD","NAYARD_A","NAYARD_AD","NAYARD_B","NAYARD_BD","NAYARD_C","NAYARD_CD","NAYARD_D","NAYARD_DD","NAYARD_S1","NAYARD_S1D","NAYARD_S2","NAYARD_S2D","NAYARD_S3","NAYARD_S3D","NKMSLDN","NKMSLUP","NTPYRA","NTPYRA_A","NTPYRA_AD","NUKEANIM","NUKEANIM ;gs The contact point explosion","NUKEBALL","NUKEBALL ;GEF first step of nuke explosions (NUKEANIM is second)","NUKEDIE","NUKEPUFF","NUKETO","OLD_001;BAZAPPA;gs","OLD_002;GAWEAP_C","OLD_003;GAWEAP_D","OLD_004;GAPILE_B","OLD_005;GAPILE_C","OLD_006;GACNSTMK","OLD_007;GACNST_C","OLD_008;GACNST_CD","OLD_009;GACNST_D","OLD_010;NAHAND_A","OLD_011;NAHAND_B","OLD_012;NAHAND_BD","OLD_013;GAPILE_CD","OLD_014;NATMPLMK","OLD_015;NAREFN_A","OLD_016;NAREFN_B","OLD_017;NAREFN_C","OLD_018;NATECH_A","OLD_019;NAWAST_A","OLD_020;NAWAST_AD","OLD_021;NAWAST_B","OLD_022;NAWAST_BD","OLD_023;NAOBEL_A","OLD_024;NAMISL_A","OLD_025;NAMISL_AD","OLD_026;NAMISL_B","OLD_027;NAMISL_BD","OLD_028;GAFIRE_A","OLD_029;GAFIRE_B","OLD_030;GAFIRE_C","OLD_031;NAREFN_AR","OLD_032;NAOBEL_B","OLD_033;GADPSAMK","OLD_034;CAMACH_A","OLD_035;GATICK_A","OLD_036;GATICKMK","OLD_037;GAICBMMK","OLD_038;PULSE","OLD_039;GAYARD_B","OLD_040;NAFLAKMK","OLD_041;CAAIRPMK","OLD_042;GAAIRCMK","OLD_043;GACSPH_A","OLD_044;NACNSTD","OLD_045;WCLBOLT4","OLD_046;GAPRISDM","OLD_047;NAWEAP_AD","OLD_048;CACHIG05D","OLD_049;GAGAPMK","OLD_050;YAPPETMK","OLD_051;NAINDP_B","OLD_052;NAINDP_BD","OLD_053;CAPSYT_B","OLD_054;CAPSYT_BD","OLD_055;CAMACH_FD","PARABOMB","PARACH","PCV","PDFXCLD","PDFXCLD;psychic dominator","PDFXLOC","PDPLANE","PENTGEN","PICK","PIFF","PIFFPIFF","PODRING","POLARB","POLE01","POLE02","PRES","PROPA","PsiTroopSequence","PSIWARN","PTROOP","PTRUCK","PULSBALL","PULSEFX1","PULSEFX2","RAILBRDG","REVEAL","RING","RING1","RMNV","ROBO","ROCK","RocketeerSequence","RTNK","S_BANG16","S_BANG24","S_BANG34","S_BANG48","S_BRNL20","S_BRNL30","S_BRNL40","S_BRNL58","S_CLSN16","S_CLSN22","S_CLSN30","S_CLSN42","S_CLSN58","S_TUMU22","S_TUMU30","S_TUMU42","S_TUMU60","SAM-E","SAM-N","SAM-NE","SAM-NW","SAM-S","SAM-SE","SAM-SW","SAM-W","SCHD","SCHP","SCHPDEPL","SCHPDEPL	;GEF Seige Chopper Deploy","SEAL","SEALA","SealSequence","SGRYSMK1","SHAD","SHK","SHROUDX","SIGN01","SIGN02","SIGN03","SIGN04","SIGN05","SIGN06","SLAV","SlaveSequence","SMCV","SMIN","SMKPUFF","SMKPUFF  ;SJM: Flak AA warhead explosion","SMOKEY","SMOKEY2","SNIPE","SPEED","SPKR01","SPY","SPYP","SpySequence","SQD","SQDG","SQDG	; SJM: squid grapple","SQDG_E","SQDG_N","SQDG_NE","SQDG_NW","SQDG_S","SQDG_SE","SQDG_SW","SQDG_W","SQDP","SREF","SROCK01","SROCK02","SROCK03","SROCK04","SROCK05","SSRV","STANG","STEAMPUF","STLN","SUB","SUBT","SUVB","SUVW","TANY","TanyaSequence","TAXI","TechSequence","TELE","TerroristSequence","TIB01","TIB02","TIB03","TIB04","TIB05","TIB06","TIB07","TIB08","TIB09","TIB10","TIB11","TIB12","TIB13","TIB14","TIB15","TIB16","TIB17","TIB18","TIB19","TIB20","TIBTRE01","TIBTRE02","TIBTRE03","TNKD","TORPEDO","TRACKS01","TRACKS02","TRACKS03","TRACKS04","TRACKS05","TRACKS06","TRACKS07","TRACKS08","TRACKS09","TRACKS10","TRACKS11","TRACKS12","TRACKS13","TRACKS14","TRACKS15","TRACKS16","TREE01","TREE02","TREE03","TREE04","TREE05","TREE06","TREE07","TREE08","TREE09","TREE10","TREE11","TREE12","TREE13","TREE14","TREE15","TREE16","TREE17","TREE18","TREE19","TREE20","TREE21","TREE22","TREE23","TREE24","TREE25","TREE26","TREE27","TREE28","TREE29","TREE30","TREE31","TREE32","TREE33","TREE34","TREE35","TREE36","TREESPRD","TrexSequence","TRFF01","TRFF02","TRFF03","TRFF04","TROCK01","TROCK02","TROCK03","TROCK04","TROCK05","TRS","TRST","TRTUNN01","TRTUNN02","TRTUNN03","TRTUNN04","TRUCKA","TRUCKB","TSTIMPCT","TTNK","TUG","TUNTOP01","TUNTOP02","TUNTOP03","TUNTOP04","TWINKLE1","TWINKLE2","TWINKLE3","TWLT026","TWLT036","TWLT050","TWLT070","TWLT070T","TWLT100","TWLT100I","TWNK1","UCBLOOD","UCCONS","UCELEC","UCFLASH","UCINIT","UFO","UTNK","V3","V3ROCKET","V3TAKOFF","V3TAKOFF ;SJM","V3TRAIL","V3TRAIL  ;SJM","VEINS","VETERAN","VIRUS","VIRUSD","VIRUSD	;GEF","VLAD","VLADIMIR","VTEXPLOD","VTMUZZLE","WA01X","WA02X","WA03X","WA04X","WAKE1","WAKE2","WARPAWAY","WARPAWAY ;GEF","WARPIN","WARPIN ;GEF","WARPOUT","WARPOUT ;GEF","WB01X","WB02X","WB03X","WB04X","WC01X","WC02X","WC03X","WC04X","WCCLOUD1","WCCLOUD2","WCCLOUD3","WCLBOLT1","WCLBOLT2","WCLBOLT3","WCRATE","WD01X","WD02X","WD03X","WD04X","WINI","XGRYMED1","XGRYMED2","XGRYSML1","XGRYSML2","YABRCK","YABRCK_A","YABRCK_AD","YACNST","YACNST_A","YACNST_AD","YACNST_B","YACNST_BD","YACNST_C","YACNST_CD","YACNST_CD ;gs moved from middle of list.  New stuff must be added to end.","YACOMD","YAGGUN","YAGNTC","YAGNTC_E","YAGNTC_ED","YAGNTC_F","YAGNTC_FD","YAGNTC_G","YAGNTC_GD","YAGNTC_H","YAGNTC_HD","YAGNTC_P","YAGNTC_PD","YAGRND","YAGRND_A","YAGRND_AD","YAGRND_B","YAGRND_BD","YAGRND_C","YAGRND_CD","YAGRND_D","YAGRND_DD","YAPOWR","YAPOWR_A","YAPOWR_AD","YAPOWR_B","YAPOWR_BD","YAPOWR_C","YAPOWR_CD","YAPPET","YAPPET_A","YAPPET_AD","YAPPET_E","YAPPET_ED","YAPPET_F","YAPPET_FD","YAPPET_G","YAPPET_GD","YAPPET_H","YAPPET_HD","YAPPPT","YAPSYT","YAPSYT_A","YAPSYT_AD","YAPSYT_B","YAPSYT_BD","YAREFN","YAREFN_A","YAROCK","YAROCK_A","YATECH","YATECH_A","YATECH_AD","YAWEAP","YAWEAP_1","YAWEAP_1D","YAWEAP_2","YAWEAP_2D","YAWEAP_3","YAWEAP_3D","YAWEAP_4","YAWEAP_4D","YAWEAP_A","YAWEAP_AD","YAYARD","YAYARD_A","YAYARD_AD","YAYARD_C","YAYARD_CD","YAYARD_D","YAYARD_DD","YAYARD_S","YAYARD_S2","YAYARD_S2D","YAYARD_S3","YAYARD_S3D","YAYARD_SD","YCAB","YENGINEER","YHVR","YTNK","YURBLANK","YURI","YURICNTL","YURIDIE","YuriPrSequence","YuriSequence","YURIX","YuriXSequence","ZBOMB","ZEP"],
+  "infantry": ["ADOG","ALL ; Herbert the Alligator","ARND","BORIS","BRUTE","CAML","CCOMAND","CIV1","CIV2","CIV3","CIVA","CIVAN","CIVB","CIVBBP","CIVBF","CIVBFM","CIVBTM","CIVC","CIVSF","CIVSFM","CIVSTM","CLEG","CLNT","COW","CTECH","DESO","DNOA","DNOB","DOG","E1","E2","EINS","ENGINEER","FLAKT","GGI","GHOST","INIT","IVAN","JOSH","JUMPJET","LUNR","MUMY","PENTGEN","POLARB","PRES","PTROOP","RMNV","SENGINEER","SHK","SLAV","SNIPE","SPY","SSRV","STLN","TANY","TERROR","VIRUS","VLADIMIR","WEEDGUY","WWLF","YADOG","YDOG","YENGINEER","YURI","YURIPR"],
+  "vehicles": ["AEGIS","AMBU","AMCV;Allied MCV","APOC","BCAB","BFRT","BSUB","BUS","CAOS","CAR","CARRIER","CBLC","CDEST","CIVP","CMIN","CMON","CONA","COP","CRUISE","DDBX","DeathDummy ;dummy object used to work around INI parsing problem for DeathWeapon - TR ;gs needs to be unit since infantry hard code require art","DEST","DISK","DLPH","DOLY","DRED","DRON","DTRUCK","EUROC","FTRK","FV","HARV","HIND","HORV","HOWI","HTK","HTNK","HYD","JEEP","LCRF","LIMO","LTNK","MGTK","MIND","MTNK","PCV","PICK","PROPA","PTRUCK","ROBO","SAPC","SCHD","SCHP","SHAD","SMCV; soviet MCV","SMIN","SMON","SQD","SREF","STANG","SUB","SUVB","SUVW","TAXI","TELE","TNKD","TRUCKA","TRUCKB","TTNK","TUG","UTNK","V3","VLAD","WINI","XCOMET ; Not real unit.  Weapons have to belong to a unit to be used for things like airburst and Shrapnel.  Not my hack.","YCAB","YDUM","YHVR","YTNK","ZEP"],
+  "aircraft": ["APACHE","ASW","BEAG","BPLN","CARGOPLANE","CMISL","DMISL","HORNET","ORCA","PDPLANE","SPYP","V3ROCKET"],
+  "buildings": ["AMMOCRAT","AMRADR","ATESLA","BLUELAMP","CAAIRP			; Civilian Airport","CAARMY01","CAARMY02","CAARMY03","CAARMY04","CABARN02","CABARR01","CABARR02","CABHUT","CABUNK01","CABUNK02","CABUNK03","CABUNK04","CACHIG01","CACHIG02","CACHIG03","CACHIG04","CACHIG05","CACHIG06","CACITY01","CACITY02","CACITY03","CACITY04","CACOLO01","CACUFGL","CAEAST01","CAEAST02","CAEGYP01","CAEGYP02","CAEGYP03","CAEGYP04","CAEGYP05","CAEGYP06","CAEUR04","CAEUR1","CAEUR2","CAEURO05","CAFARM01","CAFARM02","CAFARM06","CAFNCB","CAFNCP","CAFNCW","CAFRFGL","CAFRMA","CAFRMB","CAGARD01","CAGAS01","CAGEFGL","CAHOSP","CAHSE01","CAHSE02","CAHSE03","CAHSE04","CAHSE05","CAHSE06","CAHSE07","CAIND01","CAKRMW","CALA01","CALA02","CALA03","CALA04","CALA05","CALA06","CALA07","CALA08","CALA09","CALA10","CALA11","CALA12","CALA13","CALA14","CALA15","CALAB","CALBFGL","CALIT01E","CALIT01N","CALIT01S","CALIT01W","CALIT02L","CALIT02R","CALIT03E","CALIT03N","CALIT03S","CALIT03W","CALOND01","CALOND02","CALOND03","CALOND04","CALOND05","CALOND06","CALUNR01","CALUNR02","CAMACH","CAMEX01","CAMEX02","CAMEX03","CAMEX04","CAMEX05","CAMIAM01","CAMIAM02","CAMIAM03","CAMIAM04","CAMIAM05","CAMIAM06","CAMIAM07","CAMIAM08","CAMISC01","CAMISC02","CAMISC03","CAMISC04","CAMISC05","CAMISC06","CAMOON01","CAMORR01","CAMORR02","CAMORR03","CAMORR04","CAMORR05","CAMORR06","CAMORR07","CAMORR08","CAMORR09","CAMORR10","CAMOV01","CAMOV02","CAMSC01","CAMSC02","CAMSC03","CAMSC04","CAMSC05","CAMSC06","CAMSC07","CAMSC08","CAMSC09","CAMSC10","CAMSC11","CAMSC12","CAMSC12A","CAMSC13","CANEWY01","CANEWY04","CANEWY05","CANEWY06","CANEWY07","CANEWY08","CANEWY10","CANEWY11","CANEWY12","CANEWY13","CANEWY14","CANEWY15","CANEWY16","CANEWY17","CANEWY18","CANEWY20","CANEWY21","CANWY05","CANWY09","CANWY22","CANWY23","CANWY24","CANWY25","CANWY26","CAOILD			; Tech Oil Derrick","CAOUTP			; Outpost","CAPARK01","CAPARK02","CAPARK03","CAPARK04","CAPARK05","CAPARK06","CAPARS01","CAPARS02","CAPARS04","CAPARS05","CAPARS06","CAPARS07","CAPARS08","CAPARS09","CAPARS10","CAPARS11","CAPARS12","CAPARS13","CAPARS14","CAPOFGL","CAPOL01E","CAPOL01N","CAPOL01S","CAPOL01W","CAPOWR","CAPRS03","CARUFGL","CARUS01","CARUS02A","CARUS02B","CARUS02C","CARUS02D","CARUS02E","CARUS02F","CARUS02G","CARUS03","CARUS04","CARUS05","CARUS06","CARUS07","CARUS08","CARUS09","CARUS10","CARUS11","CASANF01","CASANF02","CASANF03","CASANF04","CASANF05","CASANF06","CASANF07","CASANF08","CASANF09","CASANF10","CASANF11","CASANF12","CASANF13","CASANF14","CASANF15","CASANF16","CASANF17","CASANF18","CASEAT01","CASEAT02","CASIN01E","CASIN01N","CASIN01S","CASIN01W","CASIN03E","CASIN03S","CASKFGL","CASLAB","CASTL01","CASTL02","CASTL03","CASTL04","CASTL05A","CASTL05B","CASTL05C","CASTL05D","CASTL05E","CASTL05F","CASTL05G","CASTL05H","CASTRT01","CASTRT02","CASTRT03","CASTRT04","CASTRT05","CASWST01","CASYDN01; NAWAST","CASYDN02; GARADR","CASYDN03; NAHPAD","CATECH01","CATEXS01","CATEXS02","CATEXS03","CATEXS04","CATEXS05","CATEXS06","CATEXS07","CATEXS08","CATHOSP			; Tech Hospital","CATIME","CATIME01","CATIME02","CATRAN01; CAEURO01","CATRAN02; CAIRSFGL","CATRAN03","CATS01","CAUKFGL","CAURB01","CAURB02","CAURB03","CAUSFGL","CAWA2A","CAWA2B","CAWA2C","CAWA2D","CAWASH01","CAWASH03","CAWASH04","CAWASH05","CAWASH06","CAWASH07","CAWASH08","CAWASH09","CAWASH10","CAWASH11","CAWASH13","CAWASH14","CAWASH15","CAWASH16","CAWASH17","CAWASH18","CAWASH19","CAWSH12","CAWT01","CITY01","CITY02","CITY03","CITY04","CITY05","CITY06","GAAIRC","GACNST","GACSPH","GADEPT","GADUMY","GAFWLL;temp wall for yuri YAWALL","GAGAP","GAGATE_A ;gs This is a building.  Not an Overlay!!!","GAGREEN","GALITE","GAOREP			; Allied Ore Processor","GAPILE","GAPILL","GAPOWR","GAREFN","GAROBO;this is the robot control center.","GASAND","GASPYSAT","GATECH","GAWALL","GAWEAP","GAWEAT","GAYARD","GRENLAMP","GTGCAN			; Grand Cannon","INBLULMP","INGALITE","INGRNLMP","INORANLAMP","INPURPLAMP","INREDLMP","INYELWLAMP","MAYAN","NABNKR","NACLON			; Soviet Cloning Vats","NACNST","NADEPT	; GEF Moving the soviet repair depot here to make up for the gap left by french wall being taken out","NAFLAK			; Flak Cannon","NAHAND","NAINDP","NAIRON","NALASR","NAMISL","NANRCT			; Soviet Nuclear Reactor","NAPOWR","NAPSIS","NAPSYA","NAPSYB","NARADR","NAREFN","NASAM","NATBNK","NATECH","NAWALL","NAWEAP","NAYARD","NEGLAMP","NEGRED","PURPLAMP","REDLAMP","SNODAYLAMP","SNODUSLAMP","SNOMORLAMP","SNONITLAMP","TEMDAYLAMP","TEMDUSLAMP","TEMMORLAMP","TEMNITLAMP","TESLA","TSTLAMP","YABRCK","YACNST","YACOMD","YADEPT","YAGGUN","YAGNTC","YAGRND","YAPOWR","YAPPET","YAPPPT","YAPSYT","YAREFN;gs Mobile refinery is a building transformer","YAROCK","YATECH","YAWEAP","YAYARD","YELWLAMP"],
+  "superweapons": ["AmericanParaDropSpecial","ChronoSphereSpecial","ChronoWarpSpecial","ForceShieldSpecial","GeneticConverterSpecial","IronCurtainSpecial","LightningStormSpecial","NukeSpecial","ParaDropSpecial","PsychicDominatorSpecial","PsychicRevealSpecial","SpyPlaneSpecial"],
+  "countries": ["Africans","Alliance","Americans ; Starts at zero because dialog returns 0 for first listing regardless of name","Arabs","British","Confederation","French","GDI","Germans","Neutral","Nod","Russians","Special","YuriCountry"]
+};
+/* ===== blocks/registry.js ===== */
+/* ===========================================================================
+ *  Karst script studio - block registry
+ * ===========================================================================
+ *  This file is the single source of truth for the block library. It is used
+ *  by the page (inlined by build_studio.ps1) AND by tests\build_cases.js under
+ *  Node, which is what makes "every block compiles" a checkable claim: the
+ *  test generates one .cs per block through this very code path and compiles
+ *  them all with verify_compile.ps1.
+ *
+ *  A block is data plus two optional code emitters:
+ *      expr(args, ctx)  -> a C# *boolean expression*      (conditions)
+ *      emit(args, ctx)  -> an array of C# *statement lines* (actions)
+ *
+ *  Every snippet below was written against the verified API inventory
+ *  (Karst\docs\脚本API参考.md) and is compiled by tests\build_cases.js.
+ *  Being careful here is not pedantry: the failure mode of a wrong snippet is
+ *  an `error CS...` in the user's patcher.log, long after the page said "ok".
+ *
+ *  Design rule taken from the inventory - never generate a bare `.Ref` on a
+ *  pointer that can be null. A null `Ref` is an AccessViolationException, which
+ *  the CLR does not let anyone catch: the game exits. So every looked-up
+ *  pointer (ABSTRACTTYPE_ARRAY.Find, ExtMap.Find, CastTo*) is null-checked in
+ *  the generated code, even when that costs an extra line.
+ * ======================================================================== */
+(function (root, factory) {
+  var api = factory();
+  if (typeof module !== 'undefined' && module.exports) { module.exports = api; }
+  else { root.KarstRegistry = api; }
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict';
+
+  var VERSION = 1;
+
+  // --- helpers -------------------------------------------------------------
+
+  // C# string literal (regular, not verbatim: escapes are predictable).
+  function csStr(s) {
+    return '"' + String(s === undefined || s === null ? '' : s)
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/\r\n|\r|\n/g, '\\n') + '"';
+  }
+
+  function csInt(v, def) {
+    var n = parseInt(v, 10);
+    if (isNaN(n)) { n = def; }
+    return n;
+  }
+
+  // A C# identifier safe to use as a local variable suffix.
+  function safeId(id) {
+    var s = String(id || 'x').replace(/[^A-Za-z0-9_]/g, '');
+    if (!s || /^[0-9]/.test(s)) { s = 'b' + s; }
+    return s;
+  }
+
+  // =========================================================================
+  //  Events
+  // =========================================================================
+  //  Signatures are copied from Extension\Script\Scriptable.cs. OnUpdate is NOT
+  //  declared there - it comes from Component.OnUpdate() - but it is virtual,
+  //  so `override` is correct for it too.
+  //
+  //  `params` lists the variables the event hands to the block bodies.
+  // =========================================================================
+  var EVENTS = {
+    OnUpdate: {
+      label: '每帧 OnUpdate',
+      short: '每帧',
+      hint: '每一帧都会跑。做持续效果、计时、追踪目标时用这个。',
+      sig: 'public override void OnUpdate()',
+      params: {},
+      note: null
+    },
+    OnFire: {
+      label: '开火时 OnFire',
+      short: '开火',
+      hint: '这个单位开火时跑一次。pTarget 是开火目标。',
+      sig: 'public override void OnFire(Pointer<AbstractClass> pTarget, int weaponIndex)',
+      params: { pTarget: 'Pointer<AbstractClass>', weaponIndex: 'int' },
+      note: '⚠️ 不要在这个事件里再让单位开火（会无限递归）。'
+    },
+    OnReceiveDamage: {
+      label: '受伤时 OnReceiveDamage',
+      short: '受伤',
+      hint: '受到伤害时跑。改 pDamage 就能改伤害值（可以免疫或加倍）。',
+      sig: 'public override void OnReceiveDamage(Pointer<int> pDamage, int DistanceFromEpicenter,\n'
+         + '            Pointer<WarheadTypeClass> pWH, Pointer<ObjectClass> pAttacker,\n'
+         + '            bool IgnoreDefenses, bool PreventPassengerEscape, Pointer<HouseClass> pAttackingHouse)',
+      params: {
+        pDamage: 'Pointer<int>',
+        DistanceFromEpicenter: 'int',
+        pWH: 'Pointer<WarheadTypeClass>',
+        pAttacker: 'Pointer<ObjectClass>',
+        IgnoreDefenses: 'bool',
+        PreventPassengerEscape: 'bool',
+        pAttackingHouse: 'Pointer<HouseClass>'
+      },
+      note: '⚠️ 这个事件在单位的受伤流程里跑，别在里面做重活。'
+    },
+    OnPut: {
+      label: '出场时 OnPut',
+      short: '出场',
+      hint: '单位第一次出现在世界上时跑一次（用它做初始化）。',
+      sig: 'public override void OnPut(CoordStruct coord, Direction faceDir)',
+      params: { coord: 'CoordStruct', faceDir: 'Direction' },
+      // Measured: the driver passes default(Direction) here, so faceDir is
+      // always north. Saying so prevents "why is my unit always facing up".
+      note: '⚠️ faceDir 由驱动传默认值（恒为北），要真实朝向请读 self.Ref.Facing。'
+    },
+    OnRemove: {
+      label: '被移除时 OnRemove',
+      short: '移除',
+      hint: '单位被移除/摧毁时跑一次。适合打日志收尾。',
+      sig: 'public override void OnRemove()',
+      params: {},
+      note: '⚠️ 此时对象正在销毁，别去读它的引擎字段（可能会崩），写日志最安全。'
+    }
+  };
+
+  // =========================================================================
+  //  Conditions
+  // =========================================================================
+  //  Each returns a C# boolean expression. `needs` names variables that must be
+  //  available (either from the event's params, or `provides`d by an earlier
+  //  condition in the same event).
+  // =========================================================================
+  var CONDITIONS = {
+    everyNFrames: {
+      label: '每 N 帧',
+      group: '时机',
+      hint: '每过 N 帧才通过一次（配合"每帧"事件用）。',
+      needs: [],
+      args: [{ k: 'n', label: '帧数', type: 'int', def: 30, min: 1, max: 100000 }],
+      expr: function (a) {
+        return '(Game.CurrentFrame % ' + csInt(a.n, 30) + ') == 0';
+      }
+    },
+
+    chance: {
+      label: '概率 N%',
+      group: '时机',
+      hint: '每次跑到这里都有 N% 的机会通过。',
+      needs: [],
+      args: [{ k: 'n', label: '概率(%)', type: 'int', def: 10, min: 0, max: 100 }],
+      expr: function (a) {
+        return 'MathEx.Random.Next(0, 100) < ' + csInt(a.n, 10);
+      }
+    },
+
+    hpBelow: {
+      label: '自己血量低于 N%',
+      group: '自己的状态',
+      hint: '用当前血量和最大血量的比例判断。',
+      needs: ['self'],
+      args: [{ k: 'n', label: '百分比', type: 'int', def: 50, min: 0, max: 100 }],
+      // Multiplication instead of division: no divide-by-zero when Strength is 0,
+      // and no integer truncation surprises.
+      expr: function (a) {
+        return '(self.Ref.Base.Health * 100) < (' + csInt(a.n, 50) + ' * self.Ref.Type.Ref.Base.Strength)';
+      }
+    },
+
+    hpAbove: {
+      label: '自己血量高于 N%',
+      group: '自己的状态',
+      hint: '同上，方向相反。',
+      needs: ['self'],
+      args: [{ k: 'n', label: '百分比', type: 'int', def: 80, min: 0, max: 100 }],
+      expr: function (a) {
+        return '(self.Ref.Base.Health * 100) > (' + csInt(a.n, 80) + ' * self.Ref.Type.Ref.Base.Strength)';
+      }
+    },
+
+    selfTypeIs: {
+      label: '自己的类型是…',
+      group: '自己的状态',
+      hint: '只有一个类型 ID 时用；多个类型请用"自己的类型在列表里"。',
+      needs: ['self'],
+      args: [{ k: 'id', label: '类型 ID', type: 'game', list: 'units', def: 'MTNK' }],
+      expr: function (a) {
+        return 'self.Ref.Type.Ref.Base.Base.ID == ' + csStr(a.id);
+      }
+    },
+
+    selfTypeIn: {
+      label: '自己的类型在列表里',
+      group: '自己的状态',
+      hint: '逗号分隔多个类型 ID，例如 MTNK,GRIZZLY。',
+      needs: ['self'],
+      args: [{ k: 'ids', label: '类型 ID 列表', type: 'text', def: 'MTNK' }],
+      // A local array + Array.IndexOf keeps the expression single-line and
+      // avoids a long || chain. `System` is already imported.
+      uses: ['Array'],
+      expr: function (a, ctx) {
+        var list = String(a.ids || '').split(',').map(function (s) { return s.trim(); })
+          .filter(function (s) { return s.length > 0; });
+        if (list.length === 0) { list = ['MTNK']; }
+        var arr = 'new string[] { ' + list.map(csStr).join(', ') + ' }';
+        return 'Array.IndexOf(' + arr + ', self.Ref.Type.Ref.Base.Base.ID) >= 0';
+      }
+    },
+
+    // Provides a Pointer<TechnoClass> for the following actions. The out
+    // variable is declared by the condition itself, which is why conditions are
+    // emitted as nested ifs rather than one && chain.
+    targetIsTechno: {
+      label: '目标是单位/建筑',
+      group: '目标',
+      hint: '开火或被打时，判断对方是不是一个单位/建筑（而不是墙、子弹、地形）。',
+      needs: ['pTarget'],
+      provides: ['targetTechno'],
+      events: ['OnFire'],
+      expr: function (a, ctx) {
+        return 'pTarget.CastToTechno(out Pointer<TechnoClass> ' + ctx.varName('targetTechno') + ')';
+      }
+    },
+
+    hasRemembered: {
+      label: '记住的目标还在',
+      group: '目标',
+      hint: '之前用"记住目标"存下来的那个目标是否还活着。',
+      needs: ['rememberedTarget'],
+      expr: function () {
+        return '_rememberedTarget.Get() != null';
+      }
+    },
+
+    damageOver: {
+      label: '本次伤害大于 N',
+      group: '自己的状态',
+      hint: '只用在"受伤时"事件里。',
+      needs: ['pDamage'],
+      events: ['OnReceiveDamage'],
+      args: [{ k: 'n', label: '伤害值', type: 'int', def: 100, min: 0 }],
+      expr: function (a) {
+        return 'pDamage.Ref > ' + csInt(a.n, 100);
+      }
+    }
+  };
+
+  // =========================================================================
+  //  Actions
+  // =========================================================================
+  //  Each returns an array of C# statement lines with *relative* indentation.
+  //  codegen prefixes the enclosing indent to every line, so multi-line bodies
+  //  keep their shape.
+  // =========================================================================
+  var ACTIONS = {
+    log: {
+      label: '打日志',
+      group: '日志与调试',
+      hint: '输出到 KarstPatcher\\patcher.log，用来确认脚本真的跑起来了。',
+      needs: [],
+      args: [
+        { k: 'level', label: '级别', type: 'enum', def: 'info', opts: [['info', '普通'], ['warn', '警告'], ['error', '错误']] },
+        { k: 'msg', label: '内容', type: 'text', def: 'script is running' }
+      ],
+      emit: function (a) {
+        var fn = a.level === 'warn' ? 'LogWarning' : (a.level === 'error' ? 'LogError' : 'Log');
+        return ['Logger.' + fn + '(' + csStr(a.msg) + ');'];
+      }
+    },
+
+    logSelf: {
+      label: '记录自己的坐标/血量',
+      group: '日志与调试',
+      hint: '一次打出坐标和当前血量，排查位置类问题时最有用。',
+      needs: ['self'],
+      args: [],
+      emit: function (a, ctx) {
+        var p = 'pos_' + ctx.id;
+        return [
+          'CoordStruct ' + p + ' = self.Ref.Base.Base.GetCoords();',
+          'Logger.Log("坐标 {0},{1},{2}  血量 {3}/{4}", ' + p + '.X, ' + p + '.Y, ' + p + '.Z,',
+          '    self.Ref.Base.Health, self.Ref.Type.Ref.Base.Strength);'
+        ];
+      }
+    },
+
+    logSelfType: {
+      label: '记录自己的类型 ID',
+      group: '日志与调试',
+      hint: '确认脚本挂在了哪个单位类型上（rulesmd.ini 的 Scripts= 是否写对）。',
+      needs: ['self'],
+      args: [],
+      emit: function () {
+        return ['Logger.Log("我的类型是 {0}", self.Ref.Type.Ref.Base.Base.ID);'];
+      }
+    },
+
+    changeHealth: {
+      label: '修改自己的血量',
+      group: '数值',
+      hint: '正数加血、负数扣血。会夹在 0 和最大血量之间。'
+          + '注意：直接改血量不触发死亡流程，要"打死"请用伤害块。',
+      needs: ['self'],
+      args: [{ k: 'delta', label: '变化量', type: 'int', def: 100 }],
+      emit: function (a, ctx) {
+        var v = 'hp_' + ctx.id;
+        return [
+          'int ' + v + ' = self.Ref.Base.Health + (' + csInt(a.delta, 100) + ');',
+          'if (' + v + ' < 0) { ' + v + ' = 0; }',
+          'if (' + v + ' > self.Ref.Type.Ref.Base.Strength) { ' + v + ' = self.Ref.Type.Ref.Base.Strength; }',
+          'self.Ref.Base.Health = ' + v + ';'
+        ];
+      }
+    },
+
+    modifyDamage: {
+      label: '修改即将受到的伤害',
+      group: '数值',
+      hint: '只用在"受伤时"事件里。可以减免（按百分比）或直接加减。',
+      needs: ['pDamage'],
+      events: ['OnReceiveDamage'],
+      args: [
+        {
+          k: 'mode', label: '方式', type: 'enum', def: 'mul',
+          opts: [['mul', '按百分比（100=不变，0=免疫）'], ['add', '加减固定值']]
+        },
+        { k: 'v', label: '数值', type: 'int', def: 50 }
+      ],
+      emit: function (a, ctx) {
+        var lines;
+        if (a.mode === 'add') {
+          lines = ['pDamage.Ref = pDamage.Ref + (' + csInt(a.v, 0) + ');'];
+        } else {
+          lines = ['pDamage.Ref = (pDamage.Ref * ' + csInt(a.v, 100) + ') / 100;'];
+        }
+        lines.push('if (pDamage.Ref < 0) { pDamage.Ref = 0; }');
+        return lines;
+      }
+    },
+
+    damageAreaAtSelf: {
+      label: '在自己位置造成范围伤害',
+      group: '伤害与爆炸',
+      hint: '走引擎完整伤害流程（弹头、护甲、友伤都生效），是会正常致死的伤害。',
+      needs: ['self'],
+      args: [
+        { k: 'wh', label: '弹头类型名', type: 'game', list: 'warheads', def: 'BlimpHE' },
+        { k: 'dmg', label: '伤害值', type: 'int', def: 100, min: 0 }
+      ],
+      emit: function (a, ctx) {
+        var wh = 'wh_' + ctx.id;
+        return [
+          '',
+          '// 范围伤害：弹头找不到就什么都不做（Find 找不到会返回空指针）',
+          'Pointer<WarheadTypeClass> ' + wh + ' = WarheadTypeClass.ABSTRACTTYPE_ARRAY.Find(' + csStr(a.wh) + ');',
+          'if (!' + wh + '.IsNull)',
+          '{',
+          '    MapClass.DamageArea(self.Ref.Base.Base.GetCoords(), ' + csInt(a.dmg, 100) + ', self, ' + wh + ', false, self.Ref.Owner);',
+          '}'
+        ];
+      }
+    },
+
+    createBulletToTarget: {
+      label: '向目标发射武器',
+      group: '伤害与爆炸',
+      hint: '复制一门武器的子弹飞向目标。⚠️ 这个 API 在底层失败时无法预防（引擎会崩），'
+          + '所以请务必填真实存在的武器名。',
+      needs: ['pTarget', 'self'],
+      // OnFire only: the snippet uses pTarget directly. Letting it appear in
+      // OnUpdate produced "名称 pTarget 不存在" in the fixtures.
+      events: ['OnFire'],
+      args: [
+        { k: 'weapon', label: '武器类型名', type: 'game', list: 'weapons', def: 'RedEye2' },
+        { k: 'wh', label: '弹头类型名', type: 'game', list: 'warheads', def: 'BlimpHE' },
+        { k: 'dmg', label: '伤害值', type: 'int', def: 100, min: 0 },
+        { k: 'speed', label: '速度', type: 'int', def: 100, min: 1 },
+        { k: 'bright', label: '可见弹道', type: 'bool', def: true }
+      ],
+      emit: function (a, ctx) {
+        var id = ctx.id;
+        var wp = 'wp_' + id, wh = 'wh_' + id, tg = 'tgt_' + id, pb = 'pb_' + id;
+        var bright = a.bright === false || a.bright === 'false' ? 'false' : 'true';
+        return [
+          '',
+          '// 造子弹：武器/弹头/弹种三层都要判空，否则 Ref 空指针会直接崩游戏',
+          'Pointer<WeaponTypeClass> ' + wp + ' = WeaponTypeClass.ABSTRACTTYPE_ARRAY.Find(' + csStr(a.weapon) + ');',
+          'Pointer<WarheadTypeClass> ' + wh + ' = WarheadTypeClass.ABSTRACTTYPE_ARRAY.Find(' + csStr(a.wh) + ');',
+          'if (!' + wp + '.IsNull && !' + wh + '.IsNull && !' + wp + '.Ref.Projectile.IsNull)',
+          '{',
+          '    if (pTarget.CastToTechno(out Pointer<TechnoClass> ' + tg + '))',
+          '    {',
+          '        Pointer<BulletClass> ' + pb + ' = ' + wp + '.Ref.Projectile.Ref.CreateBullet(',
+          '            pTarget, self, ' + csInt(a.dmg, 100) + ', ' + wh + ', ' + csInt(a.speed, 100) + ', ' + bright + ');',
+          '        if (!' + pb + '.IsNull)',
+          '        {',
+          '            ' + pb + '.Ref.Detonate(' + tg + '.Ref.Base.Base.GetCoords());',
+          '        }',
+          '    }',
+          '}'
+        ];
+      }
+    },
+
+    rememberTarget: {
+      label: '记住目标',
+      group: '目标引用',
+      hint: '把开火目标存进 _rememberedTarget，之后"每帧"事件里还能用它。',
+      needs: ['pTarget', 'rememberedTarget'],
+      events: ['OnFire'],
+      args: [],
+      emit: function (a, ctx) {
+        var tg = 'tgt_' + ctx.id, ex = 'ext_' + ctx.id;
+        return [
+          '',
+          '// 存下目标。ExtensionReference 内部是弱引用，目标死了 Get() 会返回 null',
+          'if (pTarget.CastToTechno(out Pointer<TechnoClass> ' + tg + '))',
+          '{',
+          '    TechnoExt ' + ex + ' = TechnoExt.ExtMap.Find(' + tg + ');',
+          '    if (' + ex + ' != null)',
+          '    {',
+          '        _rememberedTarget.Set(' + ex + ');',
+          '    }',
+          '}'
+        ];
+      }
+    },
+
+    clearRemembered: {
+      label: '忘记目标',
+      group: '目标引用',
+      hint: '清掉记住的目标。',
+      needs: ['rememberedTarget'],
+      args: [],
+      emit: function () {
+        return ['_rememberedTarget.Set(null);'];
+      }
+    },
+
+    // Action on the remembered target. Needs no event variables at all, so it
+    // works from OnUpdate - which is the whole point of remembering a target.
+    damageRemembered: {
+      label: '打击记住的目标',
+      group: '目标引用',
+      hint: '对记住的目标造成范围伤害。目标已经不在了就自动跳过。',
+      needs: ['self', 'rememberedTarget'],
+      args: [
+        { k: 'wh', label: '弹头类型名', type: 'game', list: 'warheads', def: 'BlimpHE' },
+        { k: 'dmg', label: '伤害值', type: 'int', def: 100, min: 0 }
+      ],
+      emit: function (a, ctx) {
+        var id = ctx.id;
+        var ex = 'tgt_' + id, pt = 'ptgt_' + id, wh = 'wh_' + id;
+        return [
+          '',
+          '// 打击记住的目标',
+          'TechnoExt ' + ex + ' = _rememberedTarget.Get();',
+          'if (' + ex + ' != null)',
+          '{',
+          '    Pointer<TechnoClass> ' + pt + ' = ' + ex + '.OwnerObject;',
+          '    if (!' + pt + '.IsNull)',
+          '    {',
+          '        Pointer<WarheadTypeClass> ' + wh + ' = WarheadTypeClass.ABSTRACTTYPE_ARRAY.Find(' + csStr(a.wh) + ');',
+          '        if (!' + wh + '.IsNull)',
+          '        {',
+          '            MapClass.DamageArea(' + pt + '.Ref.Base.Base.GetCoords(), ' + csInt(a.dmg, 100) + ', self, ' + wh + ', false, self.Ref.Owner);',
+          '        }',
+          '    }',
+          '}'
+        ];
+      }
+    },
+
+    logRememberedPos: {
+      label: '记录记住的目标的坐标',
+      group: '目标引用',
+      hint: '追踪目标时用它打点，可以看到目标在移动。',
+      needs: ['rememberedTarget'],
+      args: [],
+      emit: function (a, ctx) {
+        var id = ctx.id;
+        var ex = 'tgt_' + id, pt = 'ptgt_' + id, pos = 'tpos_' + id;
+        return [
+          '',
+          'TechnoExt ' + ex + ' = _rememberedTarget.Get();',
+          'if (' + ex + ' != null && !' + ex + '.OwnerObject.IsNull)',
+          '{',
+          '    CoordStruct ' + pos + ' = ' + ex + '.OwnerObject.Ref.Base.Base.GetCoords();',
+          '    Logger.Log("目标坐标 {0},{1},{2}", ' + pos + '.X, ' + pos + '.Y, ' + pos + '.Z);',
+          '}'
+        ];
+      }
+    }
+  };
+
+  // =========================================================================
+  //  State fields
+  // =========================================================================
+  //  Only one piece of per-script state exists in this version: the remembered
+  //  target. Keeping it a single fixed field (instead of one per block) means
+  //  "remember here, use there" just works, with nothing for the user to name
+  //  or wire up. `needs: ['rememberedTarget']` pulls the declaration in.
+  // =========================================================================
+  var FIELDS = {
+    rememberedTarget: {
+      decl: 'private ExtensionReference<TechnoExt> _rememberedTarget = new ExtensionReference<TechnoExt>();',
+      comment: '// 记住的目标（"记住目标"积木写它，"打击记住的目标"读它）'
+    }
+  };
+
+  return {
+    VERSION: VERSION,
+    EVENTS: EVENTS,
+    CONDITIONS: CONDITIONS,
+    ACTIONS: ACTIONS,
+    FIELDS: FIELDS,
+    csStr: csStr,
+    csInt: csInt,
+    safeId: safeId
+  };
+});
+
+
+/* ===== blocks/metadata.js ===== */
+/* ===========================================================================
+ *  Karst script studio - block metadata
+ * ===========================================================================
+ *  The block document travels INSIDE the .cs file, as one commented JSON line:
+ *
+ *      // @karst-studio {"v":1,"cls":"MyScript","binding":"[MTNK]","events":[...]}
+ *
+ *  WHY IT HAS TO BE IN THE FILE
+ *
+ *  The page cannot otherwise know how a script was built. It only ever sees
+ *  files the user picks; there is no directory listing it can cross-reference,
+ *  and even if there were, "which events did I tick last time" is not derivable
+ *  from generated code. Without this line, reopening an old script degrades to
+ *  "edit a wall of text" - a text editor with extra steps.
+ *
+ *  Design constraints, all of them load-bearing:
+ *    * the line must be a `//` comment, or the script would not compile;
+ *    * it must be ONE line, because a block comment spanning lines could be
+ *      broken by user edits and JSON cannot contain raw newlines anyway;
+ *    * decoding must never throw - a file edited by hand, or written by an
+ *      older version, falls back to plain code view instead of an error;
+ *    * unknown fields survive a round trip (normalize keeps them), so opening
+ *      and re-saving a file does not silently drop data written by a newer
+ *      build.
+ * ======================================================================== */
+(function (root, factory) {
+  var api = factory();
+  if (typeof module !== 'undefined' && module.exports) { module.exports = api; }
+  else { root.KarstMetadata = api; }
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict';
+
+  var PREFIX = '// @karst-studio ';
+  var VERSION = 1;
+
+  function encode(doc) {
+    return PREFIX + JSON.stringify(doc);
+  }
+
+  // True when this source looks like it came out of the studio, whatever the
+  // metadata line's state. The generator always writes this first line.
+  function looksGenerated(source) {
+    return /^\s*\/\/\s*由 Karst 脚本工作室生成/m.test(String(source || ''));
+  }
+
+  function decode(source) {
+    var text = String(source || '');
+    var re = /^[ \t]*\/\/[ \t]*@karst-studio[ \t]+(\{.*\})[ \t]*$/m;
+    var m = re.exec(text);
+    if (!m) { return null; }
+    var doc;
+    try {
+      doc = JSON.parse(m[1]);
+    } catch (e) {
+      // Hand-edited JSON (a stray quote, a truncated line): fall back to code
+      // view rather than refusing to open the file.
+      return null;
+    }
+    if (!doc || typeof doc !== 'object') { return null; }
+    return normalize(doc);
+  }
+
+  // Fills in everything the rest of the code assumes exists, without discarding
+  // what it does not recognise.
+  function normalize(doc) {
+    var out = {};
+    for (var k in doc) {
+      if (Object.prototype.hasOwnProperty.call(doc, k)) { out[k] = doc[k]; }
+    }
+    out.v = out.v || VERSION;
+    out.cls = typeof out.cls === 'string' && out.cls ? out.cls : 'MyScript';
+    out.base = out.base || 'techno';
+    out.binding = typeof out.binding === 'string' ? out.binding : '';
+    if (!Array.isArray(out.events)) { out.events = []; }
+
+    out.events = out.events.map(function (ev) {
+      ev = ev || {};
+      var e = {};
+      for (var k in ev) {
+        if (Object.prototype.hasOwnProperty.call(ev, k)) { e[k] = ev[k]; }
+      }
+      e.id = e.id || 'OnUpdate';
+      e.conds = Array.isArray(e.conds) ? e.conds.map(normalizeBlock) : [];
+      e.acts = Array.isArray(e.acts) ? e.acts.map(normalizeBlock) : [];
+      return e;
+    });
+
+    return out;
+  }
+
+  function normalizeBlock(b) {
+    b = b || {};
+    var out = {};
+    for (var k in b) {
+      if (Object.prototype.hasOwnProperty.call(b, k)) { out[k] = b[k]; }
+    }
+    out.t = out.t || '';
+    out.a = out.a && typeof out.a === 'object' ? out.a : {};
+    return out;
+  }
+
+  // Block instance ids must be unique and stable: the generated local variable
+  // names are derived from them (`wh_b3`), and the id is what makes reopening a
+  // file reproduce the same code.
+  //
+  // Ids already present are kept, and new ones skip over them. Starting the
+  // counter at 1 without checking would hand a freshly added block an id that a
+  // surviving block already holds - two blocks would then generate the same
+  // local name and the file would stop compiling.
+  function assignIds(doc, prefix) {
+    var p = prefix || 'b';
+    var used = {};
+    (doc.events || []).forEach(function (ev) {
+      (ev.conds || []).forEach(function (c) { if (c.i) { used[c.i] = true; } });
+      (ev.acts || []).forEach(function (a) { if (a.i) { used[a.i] = true; } });
+    });
+
+    var n = 1;
+    function nextId() {
+      var id;
+      do { id = p + (n++); } while (used[id]);
+      used[id] = true;
+      return id;
+    }
+
+    (doc.events || []).forEach(function (ev) {
+      (ev.conds || []).forEach(function (c) { if (!c.i) { c.i = nextId(); } });
+      (ev.acts || []).forEach(function (a) { if (!a.i) { a.i = nextId(); } });
+    });
+    return doc;
+  }
+
+  return {
+    PREFIX: PREFIX,
+    VERSION: VERSION,
+    encode: encode,
+    decode: decode,
+    normalize: normalize,
+    assignIds: assignIds,
+    looksGenerated: looksGenerated
+  };
+});
+
+
+/* ===== blocks/codegen.js ===== */
+/* ===========================================================================
+ *  Karst script studio - code generator
+ * ===========================================================================
+ *  doc (the block document)  ->  C# source text.
+ *
+ *  Pure function, no DOM: the page calls it on every edit, and Node calls it to
+ *  produce the compile-check fixtures. If the two ever disagreed, the page
+ *  could show green while the test compiled something else - so there is
+ *  exactly one implementation, and this is it.
+ *
+ *  Shape of the generated method bodies:
+ *
+ *      Pointer<TechnoClass> self = Owner.OwnerObject;      // only if used
+ *      if (cond1)                                          // nested, NOT &&
+ *      {
+ *          if (cond2)
+ *          {
+ *              ...actions...
+ *          }
+ *      }
+ *
+ *  Conditions are nested rather than joined with && on purpose: a condition may
+ *  declare an `out` variable (targetIsTechno does), and such a variable is only
+ *  in scope inside the if-statement that declares it. An && chain would produce
+ *  code that reads an undeclared name - i.e. a compile error.
+ * ======================================================================== */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory(require('./registry.js'), require('./metadata.js'));
+  } else {
+    root.KarstCodegen = factory(root.KarstRegistry, root.KarstMetadata);
+  }
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (REG, META) {
+  'use strict';
+
+  var INDENT = '    ';
+
+  function indent(n) {
+    var s = '';
+    for (var i = 0; i < n; i++) { s += INDENT; }
+    return s;
+  }
+
+  // C# class names: letters/digits/underscore, must not start with a digit.
+  function sanitizeClassName(name) {
+    var s = String(name === undefined || name === null ? '' : name).replace(/[^A-Za-z0-9_]/g, '');
+    if (!s || /^[0-9]/.test(s)) { s = 'MyScript'; }
+    return s;
+  }
+
+  // The per-event emitter context handed to block emitters. It resolves local
+  // variable names and records what the method body needs.
+  //
+  // `id` is the CURRENT BLOCK's id, not the event's. Generated locals are named
+  // after it (`wh_b3`, `pos_b7`) so that two copies of the same block in one
+  // event do not collide - naming them after the event instead produced
+  // "已在此范围定义了名为 hp_e1 的局部变量" as soon as a user added the same
+  // block twice.
+  function makeContext(eventId) {
+    return {
+      eventId: eventId,
+      id: 'x',
+      _provided: {},
+      _usedFields: {},
+      _needsSelf: false,
+
+      // Called before a condition's expr() so that (a) the out-variable it
+      // declares is registered for later blocks, and (b) local names carry this
+      // block's id.
+      beginBlock: function (block, index) {
+        this.id = REG.safeId(block.i || ('c' + (index === undefined ? 0 : index)));
+        var def = REG.CONDITIONS[block.t];
+        if (!def) { return; }
+        if (def.needs && def.needs.indexOf('self') >= 0) { this._needsSelf = true; }
+        if (def.needs) {
+          for (var i = 0; i < def.needs.length; i++) {
+            if (REG.FIELDS[def.needs[i]]) { this._usedFields[def.needs[i]] = true; }
+          }
+        }
+        if (def.provides) {
+          for (var j = 0; j < def.provides.length; j++) {
+            this._provided[def.provides[j]] = def.provides[j] + '_' + this.id;
+          }
+        }
+      },
+
+      beginAction: function (block, index) {
+        this.id = REG.safeId(block.i || ('a' + (index === undefined ? 0 : index)));
+        var def = REG.ACTIONS[block.t];
+        if (!def) { return; }
+        if (def.needs && def.needs.indexOf('self') >= 0) { this._needsSelf = true; }
+        if (def.needs) {
+          for (var i = 0; i < def.needs.length; i++) {
+            if (REG.FIELDS[def.needs[i]]) { this._usedFields[def.needs[i]] = true; }
+          }
+        }
+      },
+
+      varName: function (name) {
+        return this._provided[name] || (name + '_' + this.id);
+      },
+      hasVar: function (name) {
+        return !!this._provided[name];
+      },
+      usesFields: function () { return this._usedFields; },
+      needsSelf: function () { return this._needsSelf; }
+    };
+  }
+
+  // --- one method body -----------------------------------------------------
+  function renderEventBody(ev, ctx) {
+    var conds = ev.conds || [];
+    var acts = ev.acts || [];
+
+    // PRE-PASS. The declarations at the top of the method (`self`, ...) depend
+    // on what the blocks below use, but the blocks are only asked for their code
+    // in the second pass. Generating in a single pass therefore wrote bodies
+    // that used `self` without declaring it - error CS0103 in every fixture that
+    // used a self-reading block. Ask first, write second.
+    for (var s1 = 0; s1 < conds.length; s1++) { ctx.beginBlock(conds[s1], s1); }
+    for (var s2 = 0; s2 < acts.length; s2++) { ctx.beginAction(acts[s2], s2); }
+
+    var out = [];
+
+    if (ctx.needsSelf()) {
+      out.push('Pointer<TechnoClass> self = Owner.OwnerObject;');
+      out.push('');
+    }
+
+    var depth = 0;
+
+    for (var i = 0; i < conds.length; i++) {
+      var c = conds[i];
+      var cdef = REG.CONDITIONS[c.t];
+      // Re-register in order: a condition's `provides` must only become visible
+      // to the blocks that come after it.
+      ctx.beginBlock(c, i);
+      var expr = cdef ? cdef.expr(c.a || {}, ctx) : 'true /* 未知条件积木 */';
+      out.push(indent(depth) + 'if (' + expr + ')');
+      out.push(indent(depth) + '{');
+      depth++;
+    }
+
+    if (acts.length > 0) {
+      for (var k = 0; k < acts.length; k++) {
+        var a = acts[k];
+        var adef = REG.ACTIONS[a.t];
+        ctx.beginAction(a, k);
+        if (!adef) {
+          out.push(indent(depth) + '// 未知动作积木：' + a.t);
+          continue;
+        }
+        var code = adef.emit(a.a || {}, ctx) || [];
+        for (var m = 0; m < code.length; m++) {
+          var line = code[m];
+          if (line === '') {
+            out.push('');
+          } else if (/^\s*\/\//.test(line)) {
+            // comment lines follow the block's own relative indent
+            out.push(indent(depth) + line.replace(/^\s+/, ''));
+          } else {
+            out.push(indent(depth) + line);
+          }
+        }
+      }
+    } else {
+      out.push(indent(depth) + '// 这个事件还没有动作积木。');
+      out.push(indent(depth) + '// （在左边"动作"里挑一个加上去，右边的代码会立刻出现。）');
+    }
+
+    for (var j = conds.length - 1; j >= 0; j--) {
+      depth--;
+      out.push(indent(depth) + '}');
+    }
+
+    // Blocks may start their snippet with a blank line for breathing room in the
+    // middle of a body, but that must not leave blank runs or a blank first line.
+    var cleaned = [];
+    for (var q = 0; q < out.length; q++) {
+      if (out[q] === '' && (cleaned.length === 0 || cleaned[cleaned.length - 1] === '')) { continue; }
+      cleaned.push(out[q]);
+    }
+    while (cleaned.length > 0 && cleaned[cleaned.length - 1] === '') { cleaned.pop(); }
+
+    return cleaned;
+  }
+
+  // --- whole file ----------------------------------------------------------
+  function generate(doc) {
+    doc = doc || {};
+    var cls = sanitizeClassName(doc.cls);
+    var events = doc.events || [];
+
+    var lines = [];
+
+    // Header. The metadata line is commented out so the script still compiles;
+    // it is what lets the page rebuild the block view when the file is reopened.
+    lines.push('// 由 Karst 脚本工作室生成 —— 用积木搭出来的脚本。');
+    lines.push('// 放到 <游戏目录>\\KarstPatcher\\Scripts\\ 下即可，Karst 会自动编译。');
+    lines.push('//');
+    lines.push('// 下面这行是积木数据，用来"再次编辑"时还原积木视图。');
+    lines.push('// 删掉它脚本照样能编译，但页面就只能当普通代码编辑器用了：');
+    lines.push(META.encode(doc));
+    lines.push('');
+
+    lines.push('using System;');
+    lines.push('using DynamicPatcher;            // Logger');
+    lines.push('using Extension.Ext;             // TechnoExt');
+    lines.push('using Extension.Script;          // TechnoScriptable');
+    lines.push('using Extension.Utilities;       // ExtensionReference（记住别的对象时要用）');
+    lines.push('using PatcherYRpp;               // Pointer<T> / CoordStruct 等');
+    lines.push('using PatcherYRpp.Utilities;     // MathEx（随机数等）');
+    lines.push('');
+    lines.push('namespace Scripts');
+    lines.push('{');
+    lines.push(INDENT + 'public class ' + cls + ' : TechnoScriptable');
+    lines.push(INDENT + '{');
+    lines.push(INDENT + INDENT + 'public ' + cls + '(TechnoExt owner) : base(owner) { }');
+
+    // --- methods (emitted first so we learn which state fields are needed) --
+    var methodBlocks = [];
+    var usedFields = {};
+
+    for (var e = 0; e < events.length; e++) {
+      var ev = events[e];
+      var edef = REG.EVENTS[ev.id];
+      if (!edef) { continue; }
+
+      var ctx = makeContext(ev.id);
+      var body = renderEventBody(ev, ctx);
+
+      var f = ctx.usesFields();
+      for (var key in f) {
+        if (Object.prototype.hasOwnProperty.call(f, key)) { usedFields[key] = true; }
+      }
+
+      methodBlocks.push({ def: edef, body: body });
+    }
+
+    // --- state fields -------------------------------------------------------
+    var fieldLines = [];
+    for (var fname in usedFields) {
+      if (!Object.prototype.hasOwnProperty.call(usedFields, fname)) { continue; }
+      var fdef = REG.FIELDS[fname];
+      if (!fdef) { continue; }
+      if (fdef.comment) { fieldLines.push(INDENT + INDENT + fdef.comment); }
+      fieldLines.push(INDENT + INDENT + fdef.decl);
+    }
+
+    if (fieldLines.length > 0) {
+      lines.push('');
+      fieldLines.forEach(function (l) { lines.push(l); });
+    }
+
+    // --- method bodies ------------------------------------------------------
+    if (methodBlocks.length === 0) {
+      lines.push('');
+      lines.push(INDENT + INDENT + '// 还没有事件积木：先在左边"事件"里挑一个（比如"每帧 OnUpdate"）。');
+    }
+
+    methodBlocks.forEach(function (mb) {
+      lines.push('');
+      var sigLines = mb.def.sig.split('\n');
+      lines.push(INDENT + INDENT + sigLines[0]);
+      for (var i = 1; i < sigLines.length; i++) {
+        lines.push(INDENT + INDENT + sigLines[i]);
+      }
+      lines.push(INDENT + INDENT + '{');
+      mb.body.forEach(function (l) {
+        lines.push(l === '' ? '' : INDENT + INDENT + INDENT + l);
+      });
+      lines.push(INDENT + INDENT + '}');
+    });
+
+    lines.push(INDENT + '}');
+    lines.push('}');
+    lines.push('');
+
+    return lines.join('\n');
+  }
+
+  // The rulesmd.ini line the user has to add, or null when no unit is chosen.
+  function bindingHint(doc) {
+    var cls = sanitizeClassName(doc && doc.cls);
+    var unit = String((doc && doc.binding) || '').trim();
+    if (!unit) { return null; }
+    if (unit.charAt(0) !== '[') { unit = '[' + unit + ']'; }
+    if (unit.charAt(unit.length - 1) !== ']') { unit = unit + ']'; }
+    return unit + '\nScripts=' + cls;
+  }
+
+  return {
+    generate: generate,
+    bindingHint: bindingHint,
+    sanitizeClassName: sanitizeClassName
+  };
+});
+
+
+/* ===== blocks/validate.js ===== */
+/* ===========================================================================
+ *  Karst script studio - document validation
+ * ===========================================================================
+ *  Runs before the code is shown, so the page can say "this will not compile"
+ *  where the user is looking, instead of leaving a CS error for patcher.log.
+ *
+ *  Two kinds of finding:
+ *    error   - the generated C# would not compile, or would reference a name
+ *              that does not exist (e.g. an event variable the event lacks).
+ *    warning - it compiles, but will probably not do what the user expects
+ *              (a name that is not in the game's rules, an empty event, ...).
+ *
+ *  The needs/provides check is the important one: "打击记住的目标" only makes
+ *  sense after "记住目标", and using a pTarget-based block in OnUpdate is a
+ *  compile error. Catching that here is what keeps the promise that anything the
+ *  page shows as OK actually compiles.
+ * ======================================================================== */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory(require('./registry.js'));
+  } else {
+    root.KarstValidate = factory(root.KarstRegistry);
+  }
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (REG) {
+  'use strict';
+
+  // C# keywords that cannot be a class name.
+  var CS_KEYWORDS = ('abstract as base bool break byte case catch char checked class const continue decimal ' +
+    'default delegate do double else enum event explicit extern false finally fixed float for foreach goto if ' +
+    'implicit in int interface internal is lock long namespace new null object operator out override params ' +
+    'private protected public readonly ref return sbyte sealed short sizeof stackalloc static string struct ' +
+    'switch this throw true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while')
+    .split(' ');
+
+  function validate(doc, gameData) {
+    var errors = [];
+    var warnings = [];
+    doc = doc || {};
+
+    // --- class name --------------------------------------------------------
+    var cls = String(doc.cls === undefined || doc.cls === null ? '' : doc.cls).trim();
+    if (!cls) {
+      errors.push('类名不能为空 —— 它就是 rulesmd.ini 里 Scripts= 要填的值。');
+    } else {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(cls)) {
+        errors.push('类名 "' + cls + '" 不是合法的 C# 类名（只能用字母、数字、下划线，且不能以数字开头）。');
+      } else if (CS_KEYWORDS.indexOf(cls) >= 0) {
+        errors.push('类名 "' + cls + '" 是 C# 关键字，换一个。');
+      }
+    }
+
+    var events = doc.events || [];
+    if (events.length === 0) {
+      warnings.push('还没有事件积木，生成的类里没有任何事件，挂上去也不会有反应。');
+    }
+
+    var seenEvents = {};
+    var anyAction = false;
+
+    events.forEach(function (ev, ei) {
+      var edef = REG.EVENTS[ev.id];
+      var where = '事件 ' + (ei + 1);
+      if (!edef) {
+        errors.push(where + '：未知事件 "' + ev.id + '"。');
+        return;
+      }
+      where = '「' + edef.label + '」';
+
+      if (seenEvents[ev.id]) {
+        errors.push(where + '：同一个事件出现了两次，C# 不允许重复定义，请合并成一个。');
+      }
+      seenEvents[ev.id] = true;
+
+      // Variables available to blocks in this event: the event's own params,
+      // plus `self` (always available) plus each condition's `provides`.
+      var available = { self: true };
+      for (var p in edef.params) {
+        if (Object.prototype.hasOwnProperty.call(edef.params, p)) { available[p] = true; }
+      }
+      for (var f in REG.FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(REG.FIELDS, f)) { available[f] = true; }
+      }
+
+      (ev.conds || []).forEach(function (c) {
+        var def = REG.CONDITIONS[c.t];
+        if (!def) {
+          errors.push(where + '：未知条件积木 "' + c.t + '"。');
+          return;
+        }
+        checkBlock(def, c, where, '条件', available, ev.id, errors, warnings, gameData);
+        (def.provides || []).forEach(function (name) { available[name] = true; });
+      });
+
+      (ev.acts || []).forEach(function (a) {
+        var def = REG.ACTIONS[a.t];
+        if (!def) {
+          errors.push(where + '：未知动作积木 "' + a.t + '"。');
+          return;
+        }
+        anyAction = true;
+        checkBlock(def, a, where, '动作', available, ev.id, errors, warnings, gameData);
+      });
+
+      if ((ev.acts || []).length === 0) {
+        warnings.push(where + '：还没有动作积木，这个方法体是空的。');
+      }
+    });
+
+    if (events.length > 0 && !anyAction) {
+      warnings.push('所有事件都还没有动作积木。');
+    }
+
+    return {
+      errors: errors,
+      warnings: warnings,
+      ok: errors.length === 0
+    };
+  }
+
+  // `eventId` is the event's key (e.g. 'OnFire'). It is passed as a string, not
+  // as the EVENTS entry: the entries are keyed by id and carry no `id` field of
+  // their own - reading `edef.id` silently yielded undefined and made every
+  // event-restricted block look misplaced.
+  function checkBlock(def, block, where, kind, available, eventId, errors, warnings, gameData) {
+    // Event restriction (e.g. pDamage only exists in OnReceiveDamage).
+    if (def.events && def.events.indexOf(eventId) < 0) {
+      var names = def.events.map(function (id) {
+        return REG.EVENTS[id] ? REG.EVENTS[id].label : id;
+      }).join('、');
+      errors.push(where + '：' + kind + '「' + def.label + '」只能用在：' + names + '。'
+        + '（它需要那个事件才有的变量，放这里会编译不过。）');
+    }
+
+    // Required variables.
+    (def.needs || []).forEach(function (need) {
+      if (!available[need]) {
+        errors.push(where + '：' + kind + '「' + def.label + '」需要先有 "'
+          + friendlyVar(need) + '"，请在这个块之前加上提供它的条件积木。');
+      }
+    });
+
+    // Arguments.
+    (def.args || []).forEach(function (arg) {
+      var v = block.a ? block.a[arg.k] : undefined;
+      if (arg.type === 'int') {
+        if (v === undefined || v === '' || v === null) {
+          warnings.push(where + '：' + kind + '「' + def.label + '」的「' + arg.label + '」没填，按 '
+            + arg.def + ' 处理。');
+          return;
+        }
+        var n = parseInt(v, 10);
+        if (isNaN(n)) {
+          errors.push(where + '：' + kind + '「' + def.label + '」的「' + arg.label + '」必须是整数。');
+          return;
+        }
+        if (arg.min !== undefined && n < arg.min) {
+          errors.push(where + '：' + kind + '「' + def.label + '」的「' + arg.label + '」不能小于 ' + arg.min + '。');
+        }
+        if (arg.max !== undefined && n > arg.max) {
+          errors.push(where + '：' + kind + '「' + def.label + '」的「' + arg.label + '」不能大于 ' + arg.max + '。');
+        }
+      } else if (arg.type === 'game') {
+        var name = String(v === undefined || v === null ? '' : v).trim();
+        if (!name) {
+          warnings.push(where + '：' + kind + '「' + def.label + '」的「' + arg.label + '」没填，'
+            + '运行时会找不到任何东西（脚本不报错，但也没效果）。');
+        } else if (gameData && arg.list && Array.isArray(gameData[arg.list])) {
+          if (!containsIgnoreCase(gameData[arg.list], name)) {
+            warnings.push(where + '：' + kind + '「' + def.label + '」的「' + arg.label + '」= "'
+              + name + '" 不在本机 rules/art 文件里。写错的话运行时会静默失效。');
+          }
+        }
+      }
+    });
+  }
+
+  function friendlyVar(name) {
+    if (name === 'pTarget') { return '目标（开火事件自带）'; }
+    if (name === 'pDamage') { return '本次伤害（受伤事件自带）'; }
+    if (name === 'targetTechno') { return '一个"目标是单位/建筑"条件'; }
+    if (name === 'rememberedTarget') { return '记住的目标（用"记住目标"动作）'; }
+    return name;
+  }
+
+  function containsIgnoreCase(list, value) {
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i]).toLowerCase() === value.toLowerCase()) { return true; }
+    }
+    return false;
+  }
+
+  return { validate: validate, CS_KEYWORDS: CS_KEYWORDS };
+});
+
+
+
+
+/* ===========================================================================
+ *  App: UI state, rendering and the file-system side.
+ *  Code generation is NOT here - it is blocks\codegen.js, so that the page and
+ *  the test suite compile exactly the same thing.
+ * ======================================================================== */
+(function () {
+  'use strict';
+
+  var REG = window.KarstRegistry;
+  var META = window.KarstMetadata;
+  var CODEGEN = window.KarstCodegen;
+  var VALIDATE = window.KarstValidate;
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function esc(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // Game-name lists, as the validator wants them. 'units' is the union used by
+  // the type filters and by the "bind to" box.
+  var GAME = {
+    weapons: KARST_DATA.weapons || [],
+    warheads: KARST_DATA.warheads || [],
+    units: [].concat(KARST_DATA.infantry || [], KARST_DATA.vehicles || [],
+                     KARST_DATA.aircraft || [], KARST_DATA.buildings || [])
+  };
+
+  var state = {
+    doc: newDoc(),
+    mode: 'blocks',        // 'blocks' | 'code'
+    codeText: '',
+    dirHandle: null,
+    dirName: '',
+    files: [],
+    currentFile: null,
+    activeEvent: 0,
+    picker: null,          // { ei, kind }
+    dirty: false
+  };
+
+  function newDoc() {
+    return { v: META.VERSION, cls: 'MyScript', base: 'techno', binding: '', events: [] };
+  }
+
+  // ======================================================================
+  //  datalists
+  // ======================================================================
+  function fillDatalists() {
+    function fill(id, list) {
+      var dl = $(id);
+      if (!dl) { return; }
+      dl.innerHTML = list.map(function (v) { return '<option value="' + esc(v) + '"></option>'; }).join('');
+    }
+    fill('dl-units', GAME.units);
+    fill('dl-weapons', GAME.weapons);
+    fill('dl-warheads', GAME.warheads);
+  }
+
+  // ======================================================================
+  //  library (static)
+  // ======================================================================
+  function groupBy(list, key) {
+    var out = [];
+    Object.keys(list).forEach(function (k) {
+      var def = list[k];
+      var g = def.group || '其他';
+      var found = null;
+      for (var i = 0; i < out.length; i++) { if (out[i].name === g) { found = out[i]; break; } }
+      if (!found) { out.push({ name: g, items: [] }); found = out[out.length - 1]; }
+      found.items.push({ id: k, def: def });
+    });
+    return out;
+  }
+
+  function renderLibrary() {
+    var ev = $('libEvents');
+    Object.keys(REG.EVENTS).forEach(function (id) {
+      var def = REG.EVENTS[id];
+      var b = document.createElement('button');
+      b.className = 'libitem';
+      b.setAttribute('data-lib', 'event:' + id);
+      b.innerHTML = esc(def.label) + '<span class="sub">' + esc(def.hint) + '</span>';
+      ev.appendChild(b);
+    });
+
+    renderLibGroup($('libConds'), REG.CONDITIONS, 'cond');
+    renderLibGroup($('libActs'), REG.ACTIONS, 'act');
+  }
+
+  function renderLibGroup(host, list, kind) {
+    groupBy(list, 'group').forEach(function (g) {
+      var h = document.createElement('div');
+      h.className = 'hint';
+      h.style.margin = '8px 0 4px';
+      h.style.opacity = '.75';
+      h.textContent = g.name;
+      host.appendChild(h);
+
+      g.items.forEach(function (item) {
+        var b = document.createElement('button');
+        b.className = 'libitem ' + kind;
+        b.setAttribute('data-lib', kind + ':' + item.id);
+        b.innerHTML = esc(item.def.label) + '<span class="sub">' + esc(item.def.hint) + '</span>';
+        host.appendChild(b);
+      });
+    });
+  }
+
+  // ======================================================================
+  //  work area
+  // ======================================================================
+  function renderWork() {
+    $('clsInput').value = state.doc.cls || '';
+    $('bindInput').value = state.doc.binding || '';
+    renderEvents();
+    renderFiles();
+  }
+
+  function renderEvents() {
+    var host = $('events');
+    host.innerHTML = '';
+
+    if (state.doc.events.length === 0) {
+      host.innerHTML = '<div class="card"><p class="empty">还没有事件积木。'
+        + '从左边"事件"里点一个（比如「每帧 OnUpdate」）开始。</p></div>';
+      return;
+    }
+
+    state.doc.events.forEach(function (ev, ei) {
+      var edef = REG.EVENTS[ev.id];
+      var card = document.createElement('div');
+      card.className = 'evcard' + (state.activeEvent === ei ? ' active' : '');
+      card.setAttribute('data-ei', String(ei));
+
+      var html = '';
+      html += '<div class="evhead" data-act="pickEvent" data-ei="' + ei + '">'
+        + '<span class="nm">' + esc(edef ? edef.label : ev.id) + '</span>'
+        + '<span class="mini2">' + esc(edef ? edef.hint : '') + '</span>'
+        + '<button class="mini" data-act="delEvent" data-ei="' + ei + '">删除事件</button>'
+        + '</div><div class="evbody">';
+
+      if (edef && edef.note) {
+        html += '<div class="evnote">' + esc(edef.note) + '</div>';
+      }
+
+      // conditions
+      html += '<div class="zone cond"><div class="zonehead"><span class="tag">条件</span>'
+        + '全部满足才会执行下面的动作</div>';
+      if ((ev.conds || []).length === 0) {
+        html += '<p class="empty">没有条件 —— 每次触发都直接执行。</p>';
+      }
+      (ev.conds || []).forEach(function (c, ci) {
+        html += blockHtml(c, 'cond', ei, ci);
+      });
+      if (state.picker && state.picker.ei === ei && state.picker.kind === 'cond') {
+        html += pickerHtml(ev, 'cond', ei);
+      }
+      html += '<button class="mini" data-act="openPicker" data-ei="' + ei + '" data-kind="cond">+ 条件</button>';
+      html += '</div>';
+
+      // actions
+      html += '<div class="zone act"><div class="zonehead"><span class="tag">动作</span>'
+        + '从上到下依次执行</div>';
+      if ((ev.acts || []).length === 0) {
+        html += '<p class="empty">还没有动作，这个方法体是空的。</p>';
+      }
+      (ev.acts || []).forEach(function (a, ai) {
+        html += blockHtml(a, 'act', ei, ai);
+      });
+      if (state.picker && state.picker.ei === ei && state.picker.kind === 'act') {
+        html += pickerHtml(ev, 'act', ei);
+      }
+      html += '<button class="mini" data-act="openPicker" data-ei="' + ei + '" data-kind="act">+ 动作</button>';
+      html += '</div>';
+
+      html += '</div>';
+      card.innerHTML = html;
+      host.appendChild(card);
+    });
+  }
+
+  function blockHtml(block, kind, ei, ki) {
+    var def = (kind === 'cond' ? REG.CONDITIONS : REG.ACTIONS)[block.t];
+    if (!def) {
+      return '<div class="blk ' + kind + '"><div class="blkhead"><span class="t">未知积木 '
+        + esc(block.t) + '</span></div></div>';
+    }
+    var h = '<div class="blk ' + kind + '">';
+    h += '<div class="blkhead">'
+      + (kind === 'act' ? '<span class="idx">' + (ki + 1) + '.</span>' : '')
+      + '<span class="t">' + esc(def.label) + '</span>'
+      + '<button class="mini" data-act="move" data-dir="-1" data-kind="' + kind + '" data-ei="' + ei + '" data-ki="' + ki + '">↑</button>'
+      + '<button class="mini" data-act="move" data-dir="1" data-kind="' + kind + '" data-ei="' + ei + '" data-ki="' + ki + '">↓</button>'
+      + '<button class="mini" data-act="delBlock" data-kind="' + kind + '" data-ei="' + ei + '" data-ki="' + ki + '">×</button>'
+      + '</div>';
+
+    if ((def.args || []).length > 0) {
+      h += '<div class="blkargs">';
+      def.args.forEach(function (arg) {
+        h += '<label>' + esc(arg.label) + argInput(block, arg, kind, ei, ki) + '</label>';
+      });
+      h += '</div>';
+    }
+    h += '<div class="blkhint">' + esc(def.hint) + '</div>';
+    h += '</div>';
+    return h;
+  }
+
+  function argValue(block, arg) {
+    var v = block.a ? block.a[arg.k] : undefined;
+    return v === undefined || v === null ? arg.def : v;
+  }
+
+  function argInput(block, arg, kind, ei, ki) {
+    var v = argValue(block, arg);
+    var attrs = ' data-arg="' + esc(arg.k) + '" data-kind="' + kind + '" data-ei="' + ei + '" data-ki="' + ki + '"';
+    if (arg.type === 'int') {
+      return '<input type="number"' + attrs + ' value="' + esc(v) + '"'
+        + (arg.min !== undefined ? ' min="' + arg.min + '"' : '')
+        + (arg.max !== undefined ? ' max="' + arg.max + '"' : '') + '>';
+    }
+    if (arg.type === 'enum') {
+      return '<select' + attrs + '>' + (arg.opts || []).map(function (o) {
+        return '<option value="' + esc(o[0]) + '"' + (String(v) === String(o[0]) ? ' selected' : '') + '>'
+          + esc(o[1]) + '</option>';
+      }).join('') + '</select>';
+    }
+    if (arg.type === 'bool') {
+      return '<select' + attrs + '>'
+        + '<option value="true"' + (v === true || v === 'true' ? ' selected' : '') + '>是</option>'
+        + '<option value="false"' + (v === false || v === 'false' ? ' selected' : '') + '>否</option>'
+        + '</select>';
+    }
+    if (arg.type === 'game') {
+      var listId = arg.list === 'weapons' ? 'dl-weapons'
+        : (arg.list === 'warheads' ? 'dl-warheads' : 'dl-units');
+      return '<input type="text" list="' + listId + '"' + attrs + ' value="' + esc(v)
+        + '" spellcheck="false">';
+    }
+    return '<input type="text"' + attrs + ' value="' + esc(v) + '">';
+  }
+
+  // Which blocks can go in this event right now? Mirrors validate.js so the
+  // picker never offers something the validator would reject.
+  function blockUsable(def, evId) {
+    if (def.events && def.events.indexOf(evId) < 0) { return false; }
+    var ev = REG.EVENTS[evId];
+    var avail = { self: true };
+    Object.keys(ev.params).forEach(function (p) { avail[p] = true; });
+    Object.keys(REG.FIELDS).forEach(function (f) { avail[f] = true; });
+    return (def.needs || []).every(function (n) { return avail[n]; });
+  }
+
+  function pickerHtml(ev, kind, ei) {
+    var list = kind === 'cond' ? REG.CONDITIONS : REG.ACTIONS;
+    var opts = '';
+    Object.keys(list).forEach(function (id) {
+      var def = list[id];
+      if (!blockUsable(def, ev.id)) { return; }
+      opts += '<button class="mini" data-act="addBlock" data-kind="' + kind + '" data-ei="' + ei
+        + '" data-t="' + id + '">' + esc(def.label) + '</button>';
+    });
+    if (!opts) { opts = '<span class="hint">这个事件没有可用的' + (kind === 'cond' ? '条件' : '动作') + '。</span>'; }
+    return '<div class="picker"><div class="ph">选一个' + (kind === 'cond' ? '条件' : '动作')
+      + '（只列出能用在这个事件里的）</div><div class="opts">' + opts + '</div></div>';
+  }
+
+  // ======================================================================
+  //  code + status
+  // ======================================================================
+  function renderCode() {
+    var text;
+    if (state.mode === 'code') {
+      text = state.codeText;
+    } else {
+      META.assignIds(state.doc);
+      try {
+        text = CODEGEN.generate(state.doc);
+      } catch (e) {
+        text = '// 生成失败：' + e.message;
+      }
+    }
+    $('codeOut').textContent = text;
+    renderStatus();
+
+    var bind = CODEGEN.bindingHint(state.doc);
+    if (state.mode === 'code') {
+      $('bindLine').textContent = '（代码模式下没有积木数据，无法自动生成绑定行）';
+    } else {
+      $('bindLine').textContent = bind || '（填了"绑定到哪个单位"之后这里会给出要贴的行）';
+    }
+    $('bindOut').textContent = bind
+      ? '在 rulesmd.ini 里找到对应单位小节，加入下面两行之一；改完要重开一局才生效。'
+      : '';
+    return text;
+  }
+
+  function renderStatus() {
+    var s = $('status');
+    if (state.mode === 'code') {
+      s.className = 'status show warn';
+      s.textContent = '代码模式：这个文件没有积木数据（不是工作室生成的，或元数据行被删了）。'
+        + '这里的改动会直接保存，但不会同步回积木视图。';
+      return;
+    }
+    var r = VALIDATE.validate(state.doc, GAME);
+    var html = '';
+    if (r.errors.length) {
+      html += '<b>有 ' + r.errors.length + ' 个问题会让脚本编译不过：</b><ul>'
+        + r.errors.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul>';
+    }
+    if (r.warnings.length) {
+      html += '<b>' + (r.errors.length ? '另外 ' : '') + r.warnings.length + ' 个提醒：</b><ul>'
+        + r.warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul>';
+    }
+    if (!html) {
+      var n = state.doc.events.length;
+      html = '看起来没问题：' + n + ' 个事件' + (state.currentFile ? '，当前文件 ' + esc(state.currentFile) : '')
+        + '。保存后 Karst 会自动重编译，看 <code>patcher.log</code> 里的 '
+        + '<code>compile file succeed!</code>。';
+    }
+    s.className = 'status show ' + (r.errors.length ? 'err' : (r.warnings.length ? 'warn' : 'ok'));
+    s.innerHTML = html;
+  }
+
+  function setMsg(kind, text) {
+    var s = $('status');
+    s.className = 'status show ' + kind;
+    s.textContent = text;
+  }
+
+  // ======================================================================
+  //  file system (File System Access API)
+  // ======================================================================
+  var supportsFS = typeof window.showDirectoryPicker === 'function';
+
+  function idb() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open('karst-studio', 1);
+      req.onupgradeneeded = function () {
+        req.result.createObjectStore('kv');
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  function idbSet(key, val) {
+    return idb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').put(val, key);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+
+  function idbGet(key) {
+    return idb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction('kv', 'readonly');
+        var r = tx.objectStore('kv').get(key);
+        r.onsuccess = function () { resolve(r.result); };
+        r.onerror = function () { reject(r.error); };
+      });
+    });
+  }
+
+  // A directory handle survives in IndexedDB, but the *permission* does not.
+  // Reading queryPermission without a user gesture is fine; requestPermission is
+  // not - so the page shows a "重新授权" button instead of calling it on load.
+  function setDirState(kind, text) {
+    var el = $('dirState');
+    el.className = 'dirstate' + (kind ? ' ' + kind : '');
+    el.textContent = text;
+  }
+
+  async function pickDir() {
+    if (!supportsFS) {
+      setMsg('err', '这个浏览器不支持"直接读写目录"（只有 Chromium 系的 Edge / Chrome 可以）。'
+        + '你仍然可以用"下载 .cs"然后手动放进 KarstPatcher\\Scripts。');
+      return;
+    }
+    try {
+      var h = await window.showDirectoryPicker({ id: 'karst-scripts', mode: 'readwrite' });
+      state.dirHandle = h;
+      state.dirName = h.name;
+      await idbSet('scriptsDir', h).catch(function () { /* private mode etc. */ });
+      setDirState('on', '目录：' + h.name);
+      await refreshFiles();
+    } catch (e) {
+      handlePickerError(e);
+    }
+  }
+
+  function handlePickerError(e) {
+    if (e && e.name === 'AbortError') { return; }
+    if (e && e.name === 'SecurityError') {
+      // The measured failure of an embedded preview pane. Say what to do, not
+      // just that it failed.
+      setMsg('err', '浏览器拒绝了目录选择器：' + e.message
+        + '  —— 你大概是在 IDE / 编辑器的内嵌预览里打开的。'
+        + '请把这个 HTML 文件拖到一个独立的 Edge / Chrome 窗口里再试。');
+      setDirState('warn', '内嵌视图被拒：请用独立浏览器打开');
+      return;
+    }
+    setMsg('err', '选择目录失败：' + (e && e.message ? e.message : e));
+  }
+
+  async function ensurePermission(interactive) {
+    if (!state.dirHandle) { return false; }
+    var opts = { mode: 'readwrite' };
+    var p = await state.dirHandle.queryPermission(opts);
+    if (p === 'granted') { return true; }
+    if (!interactive) { return false; }
+    p = await state.dirHandle.requestPermission(opts);
+    return p === 'granted';
+  }
+
+  async function refreshFiles() {
+    if (!state.dirHandle) { return; }
+    var granted = await ensurePermission(false);
+    if (!granted) {
+      setDirState('warn', '需要重新授权：' + state.dirName);
+      $('btnReloadPerm').style.display = '';
+      $('fileList').innerHTML = '<p class="hint">浏览器重启后不再保留目录权限。'
+        + '点右上角"重新授权"再继续。</p>';
+      return;
+    }
+    $('btnReloadPerm').style.display = 'none';
+    setDirState('on', '目录：' + state.dirName);
+
+    var list = [];
+    try {
+      for await (var entry of state.dirHandle.values()) {
+        if (entry.kind !== 'file') { continue; }
+        if (/\.cs$/i.test(entry.name)) {
+          list.push({ name: entry.name, disabled: false });
+        } else if (/\.cs\.pro$/i.test(entry.name)) {
+          list.push({ name: entry.name, disabled: true });
+        }
+      }
+    } catch (e) {
+      setMsg('err', '读目录失败：' + e.message);
+      return;
+    }
+    list.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    state.files = list;
+    renderFiles();
+  }
+
+  function renderFiles() {
+    var host = $('fileList');
+    if (!state.dirHandle) {
+      host.innerHTML = '<p class="hint">还没有选择脚本目录。点右上角"选择脚本目录…"，指向 '
+        + '<code>&lt;游戏目录&gt;\\KarstPatcher\\Scripts</code>。</p>';
+      return;
+    }
+    if (state.files.length === 0) {
+      host.innerHTML = '<p class="hint">目录里还没有 .cs 脚本。搭好积木后点"保存到脚本目录"。</p>';
+      return;
+    }
+    host.innerHTML = state.files.map(function (f) {
+      var cur = state.currentFile === f.name ? ' cur' : '';
+      var base = f.disabled ? f.name.replace(/\.pro$/i, '') : f.name;
+      return '<div class="filerow' + cur + '">'
+        + '<span class="fn" title="' + esc(f.name) + '">' + esc(base) + '</span>'
+        + (f.disabled ? '<span class="off">已停用</span>' : '')
+        + '<button class="mini" data-act="loadFile" data-name="' + esc(f.name) + '">打开</button>'
+        + '<button class="mini" data-act="toggleFile" data-name="' + esc(f.name) + '">'
+        + (f.disabled ? '启用' : '停用') + '</button>'
+        + '<button class="mini danger" data-act="delFile" data-name="' + esc(f.name) + '">删除</button>'
+        + '</div>';
+    }).join('');
+  }
+
+  async function saveToDir() {
+    if (!supportsFS || !state.dirHandle) {
+      setMsg('warn', '还没有选择脚本目录。用右边的"下载 .cs"，然后手动放进 '
+        + 'KarstPatcher\\Scripts。');
+      return;
+    }
+    var granted = await ensurePermission(true);
+    if (!granted) { setMsg('err', '没有得到写权限。'); return; }
+
+    var text = renderCode();
+    var name;
+    if (state.mode === 'code' && state.currentFile) {
+      name = state.currentFile;
+    } else {
+      name = CODEGEN.sanitizeClassName(state.doc.cls) + '.cs';
+    }
+
+    try {
+      var exists = state.files.some(function (f) { return f.name === name; });
+      if (exists && state.currentFile !== name) {
+        if (!window.confirm('目录里已经有 ' + name + ' 了，覆盖它吗？')) { return; }
+      }
+      var fh = await state.dirHandle.getFileHandle(name, { create: true });
+      var w = await fh.createWritable();
+      await w.write(text);
+      await w.close();
+      state.currentFile = name;
+      await refreshFiles();
+      setMsg('ok', '已保存 ' + name + '。Karst 的 CodeWatcher 会自动重编译 —— '
+        + '去 KarstPatcher\\patcher.log 看 "compile file succeed!"（失败会看到 error CS....）。');
+    } catch (e) {
+      setMsg('err', '保存失败：' + e.message);
+    }
+  }
+
+  async function loadFileByName(name) {
+    if (!state.dirHandle) { return; }
+    if (!(await ensurePermission(false))) { setMsg('err', '需要先重新授权。'); return; }
+    try {
+      var fh = await state.dirHandle.getFileHandle(name);
+      var file = await fh.getFile();
+      var text = await file.text();
+      openText(text, name);
+    } catch (e) {
+      setMsg('err', '读取失败：' + e.message);
+    }
+  }
+
+  // Opening a .cs: if it carries the block metadata, rebuild the block view;
+  // otherwise fall back to plain code view. Never throw at the user because a
+  // file was hand-edited.
+  function openText(text, name) {
+    var doc = META.decode(text);
+    if (doc) {
+      state.doc = doc;
+      state.mode = 'blocks';
+      state.activeEvent = 0;
+      state.picker = null;
+      state.currentFile = name || null;
+      renderWork();
+      renderCode();
+      setMsg('ok', '已载入 ' + (name || '文件') + ' 的积木数据，可以直接改。');
+    } else {
+      state.mode = 'code';
+      state.codeText = text;
+      state.currentFile = name || null;
+      renderCode();
+      setMsg('warn', (name || '这个文件') + ' 里没有积木数据，已切到代码模式。'
+        + '（工作室生成的文件开头会有一行 // @karst-studio {...}）');
+    }
+  }
+
+  async function toggleFile(name) {
+    if (!state.dirHandle) { return; }
+    if (!(await ensurePermission(true))) { setMsg('err', '需要先重新授权。'); return; }
+    var disabled = /\.cs\.pro$/i.test(name);
+    var target = disabled ? name.replace(/\.pro$/i, '') : name + '.pro';
+    // File System Access has no rename: write the new name, then remove the old.
+    // If the write fails, the original is untouched - that is why the order
+    // matters and why the delete comes last.
+    try {
+      var src = await (await (await state.dirHandle.getFileHandle(name)).getFile()).text();
+      var dst = await state.dirHandle.getFileHandle(target, { create: true });
+      var w = await dst.createWritable();
+      await w.write(src);
+      await w.close();
+      await state.dirHandle.removeEntry(name);
+      if (state.currentFile === name) { state.currentFile = target; }
+      await refreshFiles();
+      setMsg('ok', disabled
+        ? '已启用：' + target + '（Karst 会重新编译它）'
+        : '已停用：' + target + '（改扩展名后 Karst 不再编译它，这是本项目的停用方式）');
+    } catch (e) {
+      setMsg('err', '操作失败：' + e.message);
+    }
+  }
+
+  async function deleteFile(name) {
+    if (!state.dirHandle) { return; }
+    if (!window.confirm('确实要删除 ' + name + ' 吗？这个操作不能撤销。')) { return; }
+    if (!(await ensurePermission(true))) { setMsg('err', '需要先重新授权。'); return; }
+    try {
+      await state.dirHandle.removeEntry(name);
+      if (state.currentFile === name) { state.currentFile = null; }
+      await refreshFiles();
+      setMsg('ok', '已删除 ' + name + '。');
+    } catch (e) {
+      setMsg('err', '删除失败：' + e.message);
+    }
+  }
+
+  // ======================================================================
+  //  editing operations
+  // ======================================================================
+  function touch() {
+    state.dirty = true;
+    renderCode();
+  }
+
+  function activeEventIndex() {
+    if (state.doc.events.length === 0) { return -1; }
+    if (state.activeEvent < 0 || state.activeEvent >= state.doc.events.length) { return 0; }
+    return state.activeEvent;
+  }
+
+  function addEvent(id) {
+    if (!REG.EVENTS[id]) { return; }
+    state.doc.events.push({ id: id, conds: [], acts: [] });
+    state.activeEvent = state.doc.events.length - 1;
+    state.picker = null;
+    renderWork();
+    renderCode();
+  }
+
+  function addBlock(kind, t) {
+    var ei = activeEventIndex();
+    if (ei < 0) {
+      // No event card yet: create one that can actually host this block, so a
+      // click in the library never dead-ends.
+      var def = (kind === 'cond' ? REG.CONDITIONS : REG.ACTIONS)[t];
+      var host = null;
+      Object.keys(REG.EVENTS).some(function (evId) {
+        var avail = { self: true };
+        Object.keys(REG.EVENTS[evId].params).forEach(function (p) { avail[p] = true; });
+        Object.keys(REG.FIELDS).forEach(function (f) { avail[f] = true; });
+        var ok = (!def.events || def.events.indexOf(evId) >= 0)
+          && (def.needs || []).every(function (n) { return avail[n]; });
+        if (ok) { host = evId; return true; }
+        return false;
+      });
+      if (!host) {
+        setMsg('err', '「' + def.label + '」需要特定事件的变量，'
+          + '但它需要的东西没有事件能提供，请先添加一个事件积木。');
+        return;
+      }
+      addEvent(host);
+      ei = state.doc.events.length - 1;
+    }
+
+    var ev = state.doc.events[ei];
+    if (!blockUsable((kind === 'cond' ? REG.CONDITIONS : REG.ACTIONS)[t], ev.id)) {
+      var cdef = (kind === 'cond' ? REG.CONDITIONS : REG.ACTIONS)[t];
+      setMsg('err', '「' + cdef.label + '」不能用在这个事件里'
+        + (cdef.events ? '（它只适用于：' + cdef.events.map(function (x) {
+          return REG.EVENTS[x] ? REG.EVENTS[x].label : x;
+        }).join('、') + '）' : '（它需要这个事件没有的变量）') + '。');
+      return;
+    }
+
+    var block = { t: t, a: {} };
+    var def2 = (kind === 'cond' ? REG.CONDITIONS : REG.ACTIONS)[t];
+    (def2.args || []).forEach(function (arg) { block.a[arg.k] = arg.def; });
+
+    if (kind === 'cond') { ev.conds.push(block); } else { ev.acts.push(block); }
+    state.picker = null;
+    renderWork();
+    renderCode();
+  }
+
+  function moveBlock(kind, ei, ki, dir) {
+    var ev = state.doc.events[ei];
+    var arr = kind === 'cond' ? ev.conds : ev.acts;
+    var nj = ki + dir;
+    if (nj < 0 || nj >= arr.length) { return; }
+    var tmp = arr[ki]; arr[ki] = arr[nj]; arr[nj] = tmp;
+    renderWork();
+    renderCode();
+  }
+
+  function delBlock(kind, ei, ki) {
+    var ev = state.doc.events[ei];
+    var arr = kind === 'cond' ? ev.conds : ev.acts;
+    arr.splice(ki, 1);
+    renderWork();
+    renderCode();
+  }
+
+  // ======================================================================
+  //  events
+  // ======================================================================
+  function bindEvents() {
+    // library
+    document.getElementById('library').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-lib]') : null;
+      if (!b) { return; }
+      var parts = b.getAttribute('data-lib').split(':');
+      if (parts[0] === 'event') {
+        addEvent(parts[1]);
+      } else {
+        addBlock(parts[0], parts[1]);
+      }
+    });
+
+    // work area: clicks
+    $('work').addEventListener('click', function (e) {
+      var t = e.target.closest ? e.target.closest('[data-act]') : null;
+      if (!t) { return; }
+      var act = t.getAttribute('data-act');
+      var ei = parseInt(t.getAttribute('data-ei'), 10);
+      var ki = parseInt(t.getAttribute('data-ki'), 10);
+      var kind = t.getAttribute('data-kind');
+
+      if (act === 'pickEvent') {
+        state.activeEvent = ei;
+        state.picker = null;
+        renderWork();
+      } else if (act === 'delEvent') {
+        if (!window.confirm('删除这个事件积木？')) { return; }
+        state.doc.events.splice(ei, 1);
+        state.activeEvent = Math.max(0, Math.min(state.activeEvent, state.doc.events.length - 1));
+        renderWork(); renderCode();
+      } else if (act === 'openPicker') {
+        state.activeEvent = ei;
+        state.picker = (state.picker && state.picker.ei === ei && state.picker.kind === kind)
+          ? null : { ei: ei, kind: kind };
+        renderWork();
+      } else if (act === 'addBlock') {
+        state.activeEvent = ei;
+        addBlock(kind, t.getAttribute('data-t'));
+      } else if (act === 'move') {
+        moveBlock(kind, ei, ki, parseInt(t.getAttribute('data-dir'), 10));
+      } else if (act === 'delBlock') {
+        delBlock(kind, ei, ki);
+      } else if (act === 'loadFile') {
+        loadFileByName(t.getAttribute('data-name'));
+      } else if (act === 'toggleFile') {
+        toggleFile(t.getAttribute('data-name'));
+      } else if (act === 'delFile') {
+        deleteFile(t.getAttribute('data-name'));
+      }
+    });
+
+    // work area: argument edits (do NOT re-render the block list - that would
+    // steal focus from the input the user is typing in)
+    function onArg(e) {
+      var t = e.target;
+      if (!t || !t.getAttribute || !t.getAttribute('data-arg')) { return; }
+      var ei = parseInt(t.getAttribute('data-ei'), 10);
+      var ki = parseInt(t.getAttribute('data-ki'), 10);
+      var kind = t.getAttribute('data-kind');
+      var key = t.getAttribute('data-arg');
+      var ev = state.doc.events[ei];
+      if (!ev) { return; }
+      var arr = kind === 'cond' ? ev.conds : ev.acts;
+      var block = arr[ki];
+      if (!block) { return; }
+      block.a[key] = t.value;
+      touch();
+    }
+    $('work').addEventListener('input', onArg);
+    $('work').addEventListener('change', onArg);
+
+    // header / side buttons
+    $('clsInput').addEventListener('input', function () {
+      state.doc.cls = this.value;
+      touch();
+    });
+    $('bindInput').addEventListener('input', function () {
+      state.doc.binding = this.value;
+      touch();
+    });
+
+    $('btnPickDir').addEventListener('click', pickDir);
+    $('btnReloadPerm').addEventListener('click', async function () {
+      if (await ensurePermission(true)) {
+        setMsg('ok', '已重新授权。');
+        await refreshFiles();
+      } else {
+        setMsg('err', '授权被拒绝。');
+      }
+    });
+
+    $('btnAddFirst').addEventListener('click', function () {
+      // Default to the per-frame event, which every action block can live in.
+      addEvent('OnUpdate');
+    });
+
+    $('btnOpenFile').addEventListener('click', function () { $('fileInput').click(); });
+    $('fileInput').addEventListener('change', async function (ev) {
+      var f = ev.target.files && ev.target.files[0];
+      if (!f) { return; }
+      openText(await f.text(), f.name);
+      ev.target.value = '';
+    });
+
+    $('btnNew').addEventListener('click', function () {
+      if (!window.confirm('新建会清空当前积木（没保存的话会丢）。继续吗？')) { return; }
+      state.doc = newDoc();
+      state.mode = 'blocks';
+      state.currentFile = null;
+      state.activeEvent = 0;
+      state.picker = null;
+      renderWork(); renderCode();
+      setMsg('ok', '已新建一个空脚本。');
+    });
+
+    $('btnSave').addEventListener('click', saveToDir);
+
+    $('btnDownload').addEventListener('click', function () {
+      var text = renderCode();
+      var name = (state.mode === 'code' && state.currentFile)
+        ? state.currentFile
+        : (CODEGEN.sanitizeClassName(state.doc.cls) + '.cs');
+      var blob = new Blob([text], { type: 'text/plain' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      setMsg('ok', '已下载 ' + name + '。把它放进 KarstPatcher\\Scripts 即可。');
+    });
+
+    $('btnCopy').addEventListener('click', async function () {
+      try {
+        await navigator.clipboard.writeText($('codeOut').textContent);
+        setMsg('ok', '已复制到剪贴板。');
+      } catch (e) {
+        // Measured: the clipboard is one of the APIs an embedded preview blocks.
+        setMsg('warn', '复制失败（浏览器不允许）：' + e.message
+          + ' —— 用独立浏览器窗口打开本页面就好了，或者直接手选代码复制。');
+      }
+    });
+
+    window.addEventListener('beforeunload', function (e) {
+      if (state.dirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
+  }
+
+  // ======================================================================
+  //  boot
+  // ======================================================================
+  async function boot() {
+    fillDatalists();
+    renderLibrary();
+    bindEvents();
+
+    state.doc = newDoc();
+    renderWork();
+    renderCode();
+
+    if (!supportsFS) {
+      setDirState('warn', '此浏览器不支持目录读写，改用下载');
+      $('btnPickDir').disabled = true;
+      $('saveHint').textContent = '这个浏览器不支持"直接读写目录"（Firefox/Safari 没有这个 API）。'
+        + '用"下载 .cs"再手动放到 KarstPatcher\\Scripts 下。';
+    } else {
+      $('saveHint').textContent = '保存后不用重启游戏：Karst 的 CodeWatcher 会自动重编译。';
+      // Try to get last session's directory handle back. The permission is not
+      // restored, so this only pre-fills the state and shows "重新授权".
+      try {
+        var h = await idbGet('scriptsDir');
+        if (h) {
+          state.dirHandle = h;
+          state.dirName = h.name;
+          var p = await h.queryPermission({ mode: 'readwrite' });
+          if (p === 'granted') {
+            setDirState('on', '目录：' + h.name);
+            $('btnReloadPerm').style.display = 'none';
+            await refreshFiles();
+          } else {
+            setDirState('warn', '需要重新授权：' + h.name);
+            $('btnReloadPerm').style.display = '';
+            $('fileList').innerHTML = '<p class="hint">上次用过 <code>' + esc(h.name)
+              + '</code>，浏览器现在需要你重新确认一次权限。点右上角"重新授权"。</p>';
+          }
+        }
+      } catch (e) { /* no stored handle: fine */ }
+    }
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
