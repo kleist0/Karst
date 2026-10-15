@@ -4,6 +4,7 @@
 #include <Core/MemorySafety.h>
 #include <Ext/IniHotReload/IniHotReload.h>
 #include <Ext/ShowByCountry/ShowByCountry.h>
+#include <Ext/BuildCost/BuildCost.h>
 #include <Script/ScriptLoader.h>
 #include <Script/ClrHost.h>
 #include <Version.h>
@@ -153,6 +154,11 @@ void KarstExtension::OnGameStart()
 	// changes, and adds no hook of its own - the reload rides on OnFrame below.
 	Karst::Ext::IniHotReload::Init();
 
+	// A SEPARATE feature (Ext\BuildCost). Nothing to prepare here: its value can
+	// only be read from the rules INI while the engine reads that INI, which is
+	// what its hook at 0x7146B3 does. This call only logs that it is installed.
+	Karst::Ext::BuildCost::Init();
+
 	// User scripts. Loaded here so any problem with them is reported before the
 	// game gets far; acting on the rules happens later, at the points where the
 	// modules already decide a building's art.
@@ -286,6 +292,11 @@ void KarstExtension::OnFrame()
 	// This frame boundary IS the feature's synchronisation point, which is why
 	// it needs no hook of its own.
 	Karst::Ext::IniHotReload::OnFrame();
+
+	// A SEPARATE feature (Ext\BuildCost). Its work is done inside the hook at
+	// 0x7146B3; this only reports, once per change, how many type sections were
+	// priced - a few integer comparisons per frame the rest of the time.
+	Karst::Ext::BuildCost::OnFrame();
 
 	// User scripts: re-read them when one of them changed. Costs one directory
 	// scan per frame, and does nothing else until a timestamp moves.

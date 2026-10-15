@@ -11,6 +11,7 @@
 #include <Core/MemorySafety.h>
 #include <Ext/ShowByCountry/ShowByCountry.h>
 #include <Ext/CountryArt/CountryArt.h>
+#include <Ext/BuildCost/BuildCost.h>
 #include <Version.h>
 
 #include <Helpers/Macro.h>
@@ -28,10 +29,13 @@
 //
 // Ext\IniHotReload (INI hot reload) adds NO hook: it runs from
 // Karst_MainLoop -> KarstExtension::OnFrame, which is already the per-frame
-// game-thread boundary a reload needs. The hook count therefore stays at 11.
-// See src\Ext\IniHotReload\IniHotReload.h for why no synchronisation hook is
-// required here (the reference implementation needed one only because it did
-// the reload from a watcher thread).
+// game-thread boundary a reload needs. See src\Ext\IniHotReload\IniHotReload.h
+// for why no synchronisation hook is required here (the reference
+// implementation needed one only because it did the reload from a watcher
+// thread).
+//
+// Ext\BuildCost adds ONE hook, 0x7146B3 - the store that follows the engine's
+// read of a type's `Cost=` key - so the count below is 12.
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID /*lpReserved*/)
 {
@@ -648,6 +652,73 @@ DEFINE_HOOK(712040, karst_CountryArt_Cameo, 5)
 
 	if (chosen)
 		R->ECX(reinterpret_cast<DWORD>(chosen));
+
+	return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Global build cost  (0x7146B3)  --  Ext\BuildCost
+// ---------------------------------------------------------------------------
+//
+// THE ENGINE'S PATH (measured in gamemd 1.001)
+//
+// A TechnoTypeClass' cost is read in exactly ONE place in the whole binary:
+// the string "Cost" (0x825470) has a single reference that stores into a
+// type's cost field. That reader is shared by every type class, which is what
+// makes one hook cover infantry, units, aircraft and buildings alike:
+//
+//   0x0071469F  mov  ecx, [ebp + 0x610]   ; the type's current Cost (default)
+//   0x007146A5  push ecx
+//   0x007146A6  push 0x825470             ; "Cost"
+//   0x007146AB  push ebx                  ; section name = the type's ID
+//   0x007146AC  mov  ecx, esi             ; CCINIClass* (the rules INI)
+//   0x007146AE  call 0x5276D0             ; CCINIClass::ReadInteger
+//   0x007146B3  mov  [ebp + 0x610], eax   ; <- hook here
+//
+// WHY THIS IS THE RIGHT POINT
+//
+// The hook runs BEFORE the engine stores the value, so putting our number back
+// into EAX makes the engine's own instruction write it. Nothing has to be
+// copied afterwards and no sweep over the type arrays is needed - and a hot
+// reload that refeeds the type objects (Ext\IniHotReload) re-applies the value
+// by itself, because this hook fires again for every type it rereads.
+//
+// The value comes from the same CCINIClass the engine is reading (ESI), section
+// [General]. Reading it through that object rather than through the
+// CCINIClass::INI_Rules singleton is deliberate: a reload builds a TEMPORARY
+// INIClass, and the singleton would keep answering with the startup copy.
+//
+// SIZE IS EXACTLY 6, and it covers one whole instruction:
+//
+//   0x7146B3  mov dword ptr [ebp+0x610], eax    89 85 10 06 00 00
+//   0x7146B9  mov edx, dword ptr [ebp+0x614]    <- the next instruction
+//
+// Every hook here must be >= 5 bytes (Syringe writes a 5-byte jmp) and must end
+// on an instruction boundary; tools\hookcheck.py enforces both, and
+// tools\hookconflict.py checks this address against Ares, Phobos and Kratos.
+//
+// WHAT THE FEATURE DOES, AND WHAT IT DRAGS ALONG
+//
+// `[General] BuildCost=<int>` replaces every type's Cost. Because Cost is the
+// engine's single source of truth for price, the sidebar price, the money
+// actually paid, the refund and the AI's estimates all follow it - and so does
+// the build TIME, because 0x711EE0 computes `(int)(Cost * BuildSpeed * 0.9)`.
+// That coupling is the engine's own arithmetic, not something this DLL does;
+// see src\Ext\BuildCost\BuildCost.h and docs\已有功能0.1.0.md.
+//
+// No key, an unreadable INI or a negative value leave the engine's answer
+// completely untouched.
+DEFINE_HOOK(7146B3, karst_BuildCost_CostOverride, 6)
+{
+	int cost = 0;
+
+	if (Karst::Ext::BuildCost::QueryOverride(
+		reinterpret_cast<void*>(R->ESI()),
+		reinterpret_cast<const char*>(R->EBX()),
+		cost))
+	{
+		R->EAX(cost);
+	}
 
 	return 0;
 }

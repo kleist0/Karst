@@ -29,6 +29,10 @@
     <!-- A separate feature: per-owning-country building art. It does not include
          or change ShowByCountry; see src\Ext\CountryArt\CountryArt.h. -->
     <ClCompile Include="src\Ext\CountryArt\CountryArt.cpp" />
+    <!-- A separate feature: one [General] key that gives every type the same cost.
+         It hooks the engine's own type-cost reader and keeps no state of its own;
+         see src\Ext\BuildCost\BuildCost.h. -->
+    <ClCompile Include="src\Ext\BuildCost\BuildCost.cpp" />
     <!-- A separate feature: runtime INI hot reload. Watches only the files whose
          names are listed in karst.hotreload.ini and adds no hook of its own; see
          src\Ext\IniHotReload\IniHotReload.h. -->
@@ -59,6 +63,7 @@
     <ClInclude Include="src\Core\MemorySafety.h" />
     <ClInclude Include="src\Ext\ShowByCountry\ShowByCountry.h" />
     <ClInclude Include="src\Ext\CountryArt\CountryArt.h" />
+    <ClInclude Include="src\Ext\BuildCost\BuildCost.h" />
     <ClInclude Include="src\Ext\IniHotReload\IniHotReload.h" />
     <ClInclude Include="src\Ext\IniHotReload\IniReloadTarget.h" />
     <ClInclude Include="src\Ext\IniHotReload\IniSnapshot.h" />
