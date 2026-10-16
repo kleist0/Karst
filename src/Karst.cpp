@@ -5,6 +5,7 @@
 #include <Ext/IniHotReload/IniHotReload.h>
 #include <Ext/ShowByCountry/ShowByCountry.h>
 #include <Ext/BuildCost/BuildCost.h>
+#include <Ext/VirtualSeat/VirtualSeat.h>
 #include <Script/ScriptLoader.h>
 #include <Script/ClrHost.h>
 #include <Version.h>
@@ -128,6 +129,10 @@ void KarstExtension::OnProcessDetach()
 	// a BuildingClass that is about to be freed.
 	Karst::Ext::ShowByCountry::ResetForNewMatch();
 
+	// Same for the seat plan and every object created from it: the engine is
+	// about to free all of them.
+	Karst::Ext::VirtualSeat::ResetForNewMatch();
+
 	// Stop the INI watcher thread before the process tears down.
 	Karst::Ext::IniHotReload::Shutdown();
 
@@ -158,6 +163,12 @@ void KarstExtension::OnGameStart()
 	// only be read from the rules INI while the engine reads that INI, which is
 	// what its hook at 0x7146B3 does. This call only logs that it is installed.
 	Karst::Ext::BuildCost::Init();
+
+	// A SEPARATE feature (Ext\VirtualSeat). Same shape as BuildCost: the seat
+	// lists can only be read while the engine reads a type's own rules section,
+	// which is what its hook at 0x7143BD is for. DryRun defaults to ON, so this
+	// reports what would be built and creates nothing.
+	Karst::Ext::VirtualSeat::Init();
 
 	// User scripts. Loaded here so any problem with them is reported before the
 	// game gets far; acting on the rules happens later, at the points where the
@@ -297,6 +308,12 @@ void KarstExtension::OnFrame()
 	// 0x7146B3; this only reports, once per change, how many type sections were
 	// priced - a few integer comparisons per frame the rest of the time.
 	Karst::Ext::BuildCost::OnFrame();
+
+	// A SEPARATE feature (Ext\VirtualSeat). The declarations came from the hook
+	// at 0x7143BD; this finds carriers that are actually on the map and, once
+	// DryRun=no, attaches their seat objects. With no type declaring
+	// VirtualSeat= it is one map lookup and a dictionary miss per object.
+	Karst::Ext::VirtualSeat::OnFrame();
 
 	// User scripts: re-read them when one of them changed. Costs one directory
 	// scan per frame, and does nothing else until a timestamp moves.

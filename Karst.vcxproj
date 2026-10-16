@@ -40,6 +40,10 @@
     <ClCompile Include="src\Ext\IniHotReload\IniReloadTarget.cpp" />
     <ClCompile Include="src\Ext\IniHotReload\IniSnapshot.cpp" />
     <ClCompile Include="src\Ext\IniHotReload\IniWatchThread.cpp" />
+    <!-- A separate feature: gun ports that need no real passengers. It reads its own
+         rules key while the engine reads a type's section, then attaches hidden seat
+         objects to carriers that are on the map; see src\Ext\VirtualSeat\VirtualSeat.h. -->
+    <ClCompile Include="src\Ext\VirtualSeat\VirtualSeat.cpp" />
     <!-- Scripts: user-authored JSON that configures Karst. The loader produces a
          plain rule table and touches no engine state; see src\Script\ScriptLoader.h. -->
     <ClCompile Include="src\Script\Json.cpp" />
@@ -68,6 +72,7 @@
     <ClInclude Include="src\Ext\IniHotReload\IniReloadTarget.h" />
     <ClInclude Include="src\Ext\IniHotReload\IniSnapshot.h" />
     <ClInclude Include="src\Ext\IniHotReload\IniWatchThread.h" />
+    <ClInclude Include="src\Ext\VirtualSeat\VirtualSeat.h" />
     <ClInclude Include="src\Script\Json.h" />
     <ClInclude Include="src\Script\ScriptLoader.h" />
     <ClInclude Include="src\Script\ClrHost.h" />

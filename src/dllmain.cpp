@@ -12,6 +12,7 @@
 #include <Ext/ShowByCountry/ShowByCountry.h>
 #include <Ext/CountryArt/CountryArt.h>
 #include <Ext/BuildCost/BuildCost.h>
+#include <Ext/VirtualSeat/VirtualSeat.h>
 #include <Version.h>
 
 #include <Helpers/Macro.h>
@@ -35,7 +36,12 @@
 // thread).
 //
 // Ext\BuildCost adds ONE hook, 0x7146B3 - the store that follows the engine's
-// read of a type's `Cost=` key - so the count below is 12.
+// read of a type's `Cost=` key. Ext\VirtualSeat adds FOUR: 0x7143BD, the
+// `push "OpenTopped"` in that same per-type rules reader; 0x7104C0, the
+// passenger-exit step of a dying carrier; and 0x6F3AD0 / 0x6F3D50, the head and
+// tail of TechnoClass::GetFLH, where a ghost seat is re-pointed at its own gun
+// port (the head captures the object, the tail rewrites the result). The count
+// below is therefore 16.
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID /*lpReserved*/)
 {
@@ -719,6 +725,146 @@ DEFINE_HOOK(7146B3, karst_BuildCost_CostOverride, 6)
 	{
 		R->EAX(cost);
 	}
+
+	return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Virtual seats  (0x7143BD)  --  Ext\VirtualSeat
+// ---------------------------------------------------------------------------
+//
+// THE ENGINE'S PATH (measured in gamemd 1.001)
+//
+// 0x7143BD is the `push "OpenTopped"` inside the shared per-type rules reader,
+// i.e. the instruction right after the engine collected that key's default from
+// the type:
+//
+//   0x007143B6  mov  dl, [ebp + 0x5E4]   ; the type's current OpenTopped
+//   0x007143BC  push edx                 ; ...passed as the default
+//   0x007143BD  push 0x843CCC            ; "OpenTopped"        <- hook here
+//   0x007143C2  push ebx                 ; section = the type's ID
+//   0x007143C3  mov  ecx, esi            ; CCINIClass* (the rules INI)
+//   0x007143C5  call 0x5295F0            ; CCINIClass::ReadBool
+//   0x007143CA  mov  [ebp + 0x5E4], al   ; OpenTopped <- stored
+//
+// So at the hook EBP is the TechnoTypeClass being read, EBX its section name and
+// ESI the CCINIClass the engine is reading from. That reader is shared by every
+// TechnoTypeClass, which is what makes ONE hook cover infantry, units, aircraft
+// and buildings alike.
+//
+// Reading our own key from that live INIClass - rather than from the
+// CCINIClass::INI_Rules singleton - is what makes a hot reload work: a reload
+// builds a temporary INIClass, and the singleton would keep answering with the
+// startup copy. Same reasoning as the BuildCost hook above.
+//
+// SIZE IS EXACTLY 5, and it covers one whole instruction:
+//
+//   0x7143BD  push 0x843CCC    68 CC 3C 84 00
+//   0x7143C2  push ebx         <- the next instruction
+//
+// Measured before installing it: Ares, Phobos and Kratos hook neither this
+// address nor anything within 24 bytes of it, so nothing has to be chained.
+//
+// This hook only reads and records. Nothing is created here: seats are built
+// later, from OnFrame, and only when [VirtualSeat] DryRun=no.
+DEFINE_HOOK(7143BD, karst_VirtualSeat_ReadSeats, 5)
+{
+	Karst::Ext::VirtualSeat::OnTypeRulesRead(
+		reinterpret_cast<void*>(R->EBP()),
+		reinterpret_cast<void*>(R->ESI()),
+		reinterpret_cast<const char*>(R->EBX()));
+
+	return 0;
+}
+
+// ---------------------------------------------------------------------------
+// A dying carrier's ghost seats  (0x7104C0)  --  Ext\VirtualSeat
+// ---------------------------------------------------------------------------
+//
+// TechnoClass::MarkPassengersAsExited runs while a carrier is being destroyed,
+// and BEFORE the engine unlimbos its passengers onto the ground:
+//
+//   0x00737F80  mov  eax, [esi + 0x6C4]   ; the carrier's Type
+//   0x00737F86  mov  cl, [eax + 0x5E4]    ; Type->OpenTopped
+//   0x00737F8E  je   0x737F97
+//   0x00737F92  call 0x7104C0             ; <- hook here (6 bytes)
+//   0x00737FC4  mov  eax, [esi + 0x118]   ; Passengers.FirstPassenger
+//   0x00737FD4  call 0x4DE710             ; RemoveFirstPassenger -> unlimbo
+//
+// The routine itself only clears InOpenToppedTransport on each passenger; it
+// moves nothing. That is what makes this the last moment at which a ghost seat
+// can still be taken off the list - which is exactly what Ext\VirtualSeat does
+// here, because a virtual seat must not pop out as a free unit when its carrier
+// dies. Measured before this hook existed: all of them did.
+//
+// SIZE 6 covers `add ecx, 0x114`; 0x7104C6 is the next instruction.
+// Measured: Ares, Phobos and Kratos do not hook this address or its
+// neighbourhood.
+DEFINE_HOOK(7104C0, karst_VirtualSeat_CarrierDying, 6)
+{
+	Karst::Ext::VirtualSeat::OnCarrierPassengersExiting(
+		reinterpret_cast<void*>(R->ECX()));
+
+	return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Ghost seats pick their own gun port  (0x6F3AD0 / 0x6F3D50)  --  Ext\VirtualSeat
+// ---------------------------------------------------------------------------
+//
+// Two hooks, because the object identity has to be captured at one end and used
+// at the other.
+//
+// 0x6F3AD0 is the HEAD of TechnoClass::GetFLH, entered as `sub esp, 0xC8`. ECX
+// is `this` there and nothing has had a chance to touch it.
+//
+// 0x6F3D50 is the TAIL - the four register pops, the stack teardown and
+// `ret 0x14`:
+//
+//   0x006F3D50  pop  edi
+//   0x006F3D51  pop  esi
+//   0x006F3D52  pop  ebp
+//   0x006F3D53  pop  ebx
+//   0x006F3D54  add  esp, 0xC8
+//   0x006F3D5A  ret  0x14              ; 5 arguments
+//
+// Hooking the TAIL rather than the function head is what keeps this compatible
+// with Phobos. Phobos replaces GetFLH from 0x6F3AEB and jumps to 0x6F3D50 (that
+// is its SkipGameCode), so the engine's own implementation and Phobos'
+// replacement BOTH converge here. A ghost seat is re-pointed at its own port;
+// everything else is left exactly as computed, so Phobos' work on real
+// passengers and normal weapons is untouched.
+//
+// The object is NOT taken from EBX at the tail. EBX does hold `this` in the
+// engine's implementation, but Phobos' replacement is free to reuse it - and it
+// does, which is why an earlier version of this hook silently did nothing while
+// the VirtualFLH values were being read correctly. Hence the head hook: it
+// remembers the object, the tail hook consumes it.
+//
+// The stack frame has NOT been torn down at the tail, so the arguments sit where
+// the body left them - the same place Phobos reads them from, i.e.
+// STACK_OFFSET(0xD8, 0x4):
+//
+//   [esp + 0xDC] = CoordStruct* pDest     (argument 1)
+//   [esp + 0xE0] = int          idxWeapon (argument 2)
+//
+// SIZES: 6 covers `sub esp, 0xC8` at the head. At the tail, 10 covers the four
+// pops plus `add esp, 0xC8`; a 5-byte hook would end in the middle of `add esp`,
+// which tools/hookcheck.py rejects as unsafe.
+// Measured: Ares, Phobos and Kratos hook neither address.
+DEFINE_HOOK(6F3AD0, karst_VirtualSeat_GhostFLH_Enter, 6)
+{
+	Karst::Ext::VirtualSeat::PushFLHCall(reinterpret_cast<void*>(R->ECX()));
+
+	return 0;
+}
+
+DEFINE_HOOK(6F3D50, karst_VirtualSeat_GhostFLH_Exit, 10)
+{
+	CoordStruct* pDest = reinterpret_cast<CoordStruct*>(R->Stack32(0xDC));
+	const int idxWeapon = static_cast<int>(R->Stack32(0xE0));
+
+	Karst::Ext::VirtualSeat::PopAndFixFLH(idxWeapon, pDest);
 
 	return 0;
 }
