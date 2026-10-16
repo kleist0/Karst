@@ -53,7 +53,7 @@ namespace
 		Karst::Script::Init(directory.c_str());
 
 		// The C# script system: start the .NET runtime and load the three
-		// assemblies in <game>\KarstPatcher\. Done here rather than in DllMain
+		// assemblies in <game>\karstpatcher\. Done here rather than in DllMain
 		// because starting the CLR under the loader lock is how a process
 		// deadlocks itself.
 		//

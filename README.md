@@ -10,7 +10,7 @@
 Karst 由**两半**组成，缺一不可：
 
 * **C++ 侧** —— `Release\Karst.dll`：hook 引擎、INI 热重载、按国家外观。
-* **C# 侧** —— `KarstPatcher\`（脚本宿主 `KarstPatcher.dll` + 引擎绑定 + Roslyn）：
+* **C# 侧** —— `karstpatcher\`（脚本宿主 `KarstPatcher.dll` + 引擎绑定 + Roslyn）：
   在游戏进程里编译并加载用户写的 `.cs` 脚本。
 
 只复制 `Karst.dll` 会得到一个**没有脚本系统**的 Karst，而且是静默失效。
@@ -58,12 +58,12 @@ Karst\
 
 | 想做的事 | 用什么 |
 | --- | --- |
-| 只构建 C# 那半（不打包、不编 C++） | `refs\DynamicPatcher\build_refs.bat Release` |
+| 只构建 C# 那半（不打包、不编 C++） | `refs\karstpatcher\build_refs.bat Release` |
 | 构建 + 直接部署到**本机**测试游戏目录 | `tools\deploy_to_test_game.bat`（⚠️ 写死了本机路径，**别给玩家**） |
 | 打包时顺带出一个 zip | `package.bat -Zip` |
 | 只打包不重新构建 | `package.bat -NoBuild` |
 
-前两个是**转发脚本**：真正的工作在 `refs\DynamicPatcher\build_refs.bat` 与
+前两个是**转发脚本**：真正的工作在 `refs\karstpatcher\build_refs.bat` 与
 `tools\deploy_to_test_game.bat`，它们用 `%~dp0` 定位自己的依赖，**不能被复制到别处**
 （复制后会在新位置找 `.csproj` / `package_full.ps1`，然后失败）。
 
@@ -147,8 +147,8 @@ Files=rulesmd.ini,artmd.ini,aimd.ini
 
 1. 复制 `Release\Karst.dll` 到 `gamemd.exe` 所在目录。
 2. 按需复制 `karst.ini`、`karst.hotreload.ini`、`karst.scripts.ini` 到同一目录。
-3. **想要 C# 脚本功能，还必须把整个 `KarstPatcher\` 目录复制到同一目录**
-   （内容 = `refs\DynamicPatcher\Extension\bin\Release\*.dll` 加两个 `*.config.json`）。
+3. **想要 C# 脚本功能，还必须把整个 `karstpatcher\` 目录复制到同一目录**
+   （内容 = `refs\karstpatcher\Extension\bin\Release\*.dll` 加两个 `*.config.json`）。
    少了它，用户写的 `.cs` 会被**静默忽略**。
    用 `powershell -ExecutionPolicy Bypass -File tools\package_full.ps1 -Deploy "<游戏目录>"`
    可以一步做完 1–3。

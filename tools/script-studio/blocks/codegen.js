@@ -196,7 +196,7 @@
     // Header. The metadata line is commented out so the script still compiles;
     // it is what lets the page rebuild the block view when the file is reopened.
     lines.push('// 由 Karst 脚本工作室生成 —— 用积木搭出来的脚本。');
-    lines.push('// 放到 <游戏目录>\\KarstPatcher\\Scripts\\ 下即可，Karst 会自动编译。');
+    lines.push('// 放到 <游戏目录>\\karstpatcher\\Scripts\\ 下即可，Karst 会自动编译。');
     lines.push('//');
     lines.push('// 下面这行是积木数据，用来"再次编辑"时还原积木视图。');
     lines.push('// 删掉它脚本照样能编译，但页面就只能当普通代码编辑器用了：');
@@ -204,7 +204,7 @@
     lines.push('');
 
     lines.push('using System;');
-    lines.push('using DynamicPatcher;            // Logger');
+    lines.push('using KarstPatcher;            // Logger');
     lines.push('using Extension.Ext;             // TechnoExt');
     lines.push('using Extension.Script;          // TechnoScriptable');
     lines.push('using Extension.Utilities;       // ExtensionReference（记住别的对象时要用）');

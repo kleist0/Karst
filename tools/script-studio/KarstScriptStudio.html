@@ -8,7 +8,7 @@
    Karst 脚本工作室 (Karst Script Studio)
   ===========================================================================
    A single self-contained page that builds C# scripts for Karst out of blocks
-   and manages them in <game>\KarstPatcher\Scripts.
+   and manages them in <game>\karstpatcher\Scripts.
 
    BUILD: karst\tools\script-studio\build_studio.ps1
      studio.template.html + blocks\*.js + rulesmd/artmd data -> KarstScriptStudio.html
@@ -217,7 +217,7 @@
       <h2>这个目录里的脚本</h2>
       <div class="filelist" id="fileList">
         <p class="hint">还没有选择脚本目录。点右上角"选择脚本目录…"，指向
-          <code>&lt;游戏目录&gt;\KarstPatcher\Scripts</code>。</p>
+          <code>&lt;游戏目录&gt;\karstpatcher\Scripts</code>。</p>
       </div>
       <p class="hint" id="fileHint"></p>
     </div>
@@ -282,7 +282,7 @@ var KARST_DATA = {
  *  Every snippet below was written against the verified API inventory
  *  (Karst\docs\脚本API参考.md) and is compiled by tests\build_cases.js.
  *  Being careful here is not pedantry: the failure mode of a wrong snippet is
- *  an `error CS...` in the user's patcher.log, long after the page said "ok".
+ *  an `error CS...` in the user's karstpatcher.log, long after the page said "ok".
  *
  *  Design rule taken from the inventory - never generate a bare `.Ref` on a
  *  pointer that can be null. A null `Ref` is an AccessViolationException, which
@@ -518,7 +518,7 @@ var KARST_DATA = {
     log: {
       label: '打日志',
       group: '日志与调试',
-      hint: '输出到 KarstPatcher\\patcher.log，用来确认脚本真的跑起来了。',
+      hint: '输出到 karstpatcher\\karstpatcher.log，用来确认脚本真的跑起来了。',
       needs: [],
       args: [
         { k: 'level', label: '级别', type: 'enum', def: 'info', opts: [['info', '普通'], ['warn', '警告'], ['error', '错误']] },
@@ -1127,7 +1127,7 @@ var KARST_DATA = {
     // Header. The metadata line is commented out so the script still compiles;
     // it is what lets the page rebuild the block view when the file is reopened.
     lines.push('// 由 Karst 脚本工作室生成 —— 用积木搭出来的脚本。');
-    lines.push('// 放到 <游戏目录>\\KarstPatcher\\Scripts\\ 下即可，Karst 会自动编译。');
+    lines.push('// 放到 <游戏目录>\\karstpatcher\\Scripts\\ 下即可，Karst 会自动编译。');
     lines.push('//');
     lines.push('// 下面这行是积木数据，用来"再次编辑"时还原积木视图。');
     lines.push('// 删掉它脚本照样能编译，但页面就只能当普通代码编辑器用了：');
@@ -1135,7 +1135,7 @@ var KARST_DATA = {
     lines.push('');
 
     lines.push('using System;');
-    lines.push('using DynamicPatcher;            // Logger');
+    lines.push('using KarstPatcher;            // Logger');
     lines.push('using Extension.Ext;             // TechnoExt');
     lines.push('using Extension.Script;          // TechnoScriptable');
     lines.push('using Extension.Utilities;       // ExtensionReference（记住别的对象时要用）');
@@ -1233,7 +1233,7 @@ var KARST_DATA = {
  *  Karst script studio - document validation
  * ===========================================================================
  *  Runs before the code is shown, so the page can say "this will not compile"
- *  where the user is looking, instead of leaving a CS error for patcher.log.
+ *  where the user is looking, instead of leaving a CS error for karstpatcher.log.
  *
  *  Two kinds of finding:
  *    error   - the generated C# would not compile, or would reference a name
@@ -1747,7 +1747,7 @@ var KARST_DATA = {
     if (!html) {
       var n = state.doc.events.length;
       html = '看起来没问题：' + n + ' 个事件' + (state.currentFile ? '，当前文件 ' + esc(state.currentFile) : '')
-        + '。保存后 Karst 会自动重编译，看 <code>patcher.log</code> 里的 '
+        + '。保存后 Karst 会自动重编译，看 <code>karstpatcher.log</code> 里的 '
         + '<code>compile file succeed!</code>。';
     }
     s.className = 'status show ' + (r.errors.length ? 'err' : (r.warnings.length ? 'warn' : 'ok'));
@@ -1810,7 +1810,7 @@ var KARST_DATA = {
   async function pickDir() {
     if (!supportsFS) {
       setMsg('err', '这个浏览器不支持"直接读写目录"（只有 Chromium 系的 Edge / Chrome 可以）。'
-        + '你仍然可以用"下载 .cs"然后手动放进 KarstPatcher\\Scripts。');
+        + '你仍然可以用"下载 .cs"然后手动放进 karstpatcher\\Scripts。');
       return;
     }
     try {
@@ -1885,7 +1885,7 @@ var KARST_DATA = {
     var host = $('fileList');
     if (!state.dirHandle) {
       host.innerHTML = '<p class="hint">还没有选择脚本目录。点右上角"选择脚本目录…"，指向 '
-        + '<code>&lt;游戏目录&gt;\\KarstPatcher\\Scripts</code>。</p>';
+        + '<code>&lt;游戏目录&gt;\\karstpatcher\\Scripts</code>。</p>';
       return;
     }
     if (state.files.length === 0) {
@@ -1909,7 +1909,7 @@ var KARST_DATA = {
   async function saveToDir() {
     if (!supportsFS || !state.dirHandle) {
       setMsg('warn', '还没有选择脚本目录。用右边的"下载 .cs"，然后手动放进 '
-        + 'KarstPatcher\\Scripts。');
+        + 'karstpatcher\\Scripts。');
       return;
     }
     var granted = await ensurePermission(true);
@@ -1935,7 +1935,7 @@ var KARST_DATA = {
       state.currentFile = name;
       await refreshFiles();
       setMsg('ok', '已保存 ' + name + '。Karst 的 CodeWatcher 会自动重编译 —— '
-        + '去 KarstPatcher\\patcher.log 看 "compile file succeed!"（失败会看到 error CS....）。');
+        + '去 karstpatcher\\karstpatcher.log 看 "compile file succeed!"（失败会看到 error CS....）。');
     } catch (e) {
       setMsg('err', '保存失败：' + e.message);
     }
@@ -2235,7 +2235,7 @@ var KARST_DATA = {
       a.download = name;
       a.click();
       URL.revokeObjectURL(a.href);
-      setMsg('ok', '已下载 ' + name + '。把它放进 KarstPatcher\\Scripts 即可。');
+      setMsg('ok', '已下载 ' + name + '。把它放进 karstpatcher\\Scripts 即可。');
     });
 
     $('btnCopy').addEventListener('click', async function () {
@@ -2273,7 +2273,7 @@ var KARST_DATA = {
       setDirState('warn', '此浏览器不支持目录读写，改用下载');
       $('btnPickDir').disabled = true;
       $('saveHint').textContent = '这个浏览器不支持"直接读写目录"（Firefox/Safari 没有这个 API）。'
-        + '用"下载 .cs"再手动放到 KarstPatcher\\Scripts 下。';
+        + '用"下载 .cs"再手动放到 karstpatcher\\Scripts 下。';
     } else {
       $('saveHint').textContent = '保存后不用重启游戏：Karst 的 CodeWatcher 会自动重编译。';
       // Try to get last session's directory handle back. The permission is not

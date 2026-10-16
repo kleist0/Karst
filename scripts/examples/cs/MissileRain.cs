@@ -16,7 +16,7 @@
 // ===========================================================================
 
 using System;
-using DynamicPatcher;            // Logger
+using KarstPatcher;            // Logger
 using Extension.Ext;             // TechnoExt
 using Extension.Script;          // TechnoScriptable
 using Extension.Utilities;       // ExtensionReference

@@ -8,13 +8,13 @@
 //
 //  User scripts are C#. Running them means hosting the .NET Framework runtime
 //  inside the game process, then loading the three assemblies built from
-//  refs\DynamicPatcher (see that folder's README):
+//  refs\karstpatcher (see that folder's README):
 //
 //      KarstPatcher.dll    the runtime: hooks, Roslyn compile, script loading
 //      KarstYRpp.dll       the bindings: Pointer<T>, TechnoClass, MapClass, ...
 //      KarstExtension.dll  TechnoExt/BulletExt, TechnoScriptable, decorators
 //
-//  The namespaces inside those assemblies are unchanged (DynamicPatcher,
+//  The namespaces inside those assemblies are unchanged (KarstPatcher,
 //  PatcherYRpp, Extension) so the reference project's scripts still compile;
 //  only the FILE names carry the Karst prefix, so both projects can be
 //  installed side by side without clashing.
@@ -39,7 +39,7 @@ namespace Karst
 		// Starts the .NET runtime pointed at `karstpatcher` (v4.0.30319).
 		//
 		// `gameDirectory` must end with a backslash: the assemblies are expected
-		// in <gameDirectory>KarstPatcher\.
+		// in <gameDirectory>karstpatcher\.
 		//
 		// Safe to call more than once; only the first call does work.
 		// Returns false when the runtime could not be started.

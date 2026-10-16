@@ -8,7 +8,7 @@
    Karst 脚本工作室 (Karst Script Studio)
   ===========================================================================
    A single self-contained page that builds C# scripts for Karst out of blocks
-   and manages them in <game>\KarstPatcher\Scripts.
+   and manages them in <game>\karstpatcher\Scripts.
 
    BUILD: karst\tools\script-studio\build_studio.ps1
      studio.template.html + blocks\*.js + rulesmd/artmd data -> KarstScriptStudio.html
@@ -217,7 +217,7 @@
       <h2>这个目录里的脚本</h2>
       <div class="filelist" id="fileList">
         <p class="hint">还没有选择脚本目录。点右上角"选择脚本目录…"，指向
-          <code>&lt;游戏目录&gt;\KarstPatcher\Scripts</code>。</p>
+          <code>&lt;游戏目录&gt;\karstpatcher\Scripts</code>。</p>
       </div>
       <p class="hint" id="fileHint"></p>
     </div>
@@ -576,7 +576,7 @@
     if (!html) {
       var n = state.doc.events.length;
       html = '看起来没问题：' + n + ' 个事件' + (state.currentFile ? '，当前文件 ' + esc(state.currentFile) : '')
-        + '。保存后 Karst 会自动重编译，看 <code>patcher.log</code> 里的 '
+        + '。保存后 Karst 会自动重编译，看 <code>karstpatcher.log</code> 里的 '
         + '<code>compile file succeed!</code>。';
     }
     s.className = 'status show ' + (r.errors.length ? 'err' : (r.warnings.length ? 'warn' : 'ok'));
@@ -639,7 +639,7 @@
   async function pickDir() {
     if (!supportsFS) {
       setMsg('err', '这个浏览器不支持"直接读写目录"（只有 Chromium 系的 Edge / Chrome 可以）。'
-        + '你仍然可以用"下载 .cs"然后手动放进 KarstPatcher\\Scripts。');
+        + '你仍然可以用"下载 .cs"然后手动放进 karstpatcher\\Scripts。');
       return;
     }
     try {
@@ -714,7 +714,7 @@
     var host = $('fileList');
     if (!state.dirHandle) {
       host.innerHTML = '<p class="hint">还没有选择脚本目录。点右上角"选择脚本目录…"，指向 '
-        + '<code>&lt;游戏目录&gt;\\KarstPatcher\\Scripts</code>。</p>';
+        + '<code>&lt;游戏目录&gt;\\karstpatcher\\Scripts</code>。</p>';
       return;
     }
     if (state.files.length === 0) {
@@ -738,7 +738,7 @@
   async function saveToDir() {
     if (!supportsFS || !state.dirHandle) {
       setMsg('warn', '还没有选择脚本目录。用右边的"下载 .cs"，然后手动放进 '
-        + 'KarstPatcher\\Scripts。');
+        + 'karstpatcher\\Scripts。');
       return;
     }
     var granted = await ensurePermission(true);
@@ -764,7 +764,7 @@
       state.currentFile = name;
       await refreshFiles();
       setMsg('ok', '已保存 ' + name + '。Karst 的 CodeWatcher 会自动重编译 —— '
-        + '去 KarstPatcher\\patcher.log 看 "compile file succeed!"（失败会看到 error CS....）。');
+        + '去 karstpatcher\\karstpatcher.log 看 "compile file succeed!"（失败会看到 error CS....）。');
     } catch (e) {
       setMsg('err', '保存失败：' + e.message);
     }
@@ -1064,7 +1064,7 @@
       a.download = name;
       a.click();
       URL.revokeObjectURL(a.href);
-      setMsg('ok', '已下载 ' + name + '。把它放进 KarstPatcher\\Scripts 即可。');
+      setMsg('ok', '已下载 ' + name + '。把它放进 karstpatcher\\Scripts 即可。');
     });
 
     $('btnCopy').addEventListener('click', async function () {
@@ -1102,7 +1102,7 @@
       setDirState('warn', '此浏览器不支持目录读写，改用下载');
       $('btnPickDir').disabled = true;
       $('saveHint').textContent = '这个浏览器不支持"直接读写目录"（Firefox/Safari 没有这个 API）。'
-        + '用"下载 .cs"再手动放到 KarstPatcher\\Scripts 下。';
+        + '用"下载 .cs"再手动放到 karstpatcher\\Scripts 下。';
     } else {
       $('saveHint').textContent = '保存后不用重启游戏：Karst 的 CodeWatcher 会自动重编译。';
       // Try to get last session's directory handle back. The permission is not

@@ -12,7 +12,7 @@
 //
 // WHY IT NEEDS NO HOOK OF ITS OWN
 //
-// The reference implementation (YRDynamicPatcher's DynamicLoadINI.cs) has to
+// The upstream reference implementation (DynamicLoadINI.cs) has to
 // stop the game thread with a semaphore, because it runs the reload on a
 // watcher thread. Karst already runs code on the game thread once per frame
 // (the existing main loop hook at 0x55D360 -> KarstExtension::OnFrame), which is

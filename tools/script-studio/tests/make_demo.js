@@ -2,7 +2,7 @@
  *  Karst script studio - demo script generator
  * ===========================================================================
  *      node tools\script-studio\tests\make_demo.js
- *      node tools\script-studio\tests\make_demo.js --deploy "E:\_game\RA2\yr_karst_test\KarstPatcher\Scripts"
+ *      node tools\script-studio\tests\make_demo.js --deploy "E:\_game\RA2\yr_karst_test\karstpatcher\Scripts"
  *
  *  Writes demo\*.cs - three scripts built the way the page builds them, through
  *  the same generator. They exist for two reasons:
@@ -10,7 +10,7 @@
  *    1. as the examples a new user can copy, and as the proof that the block
  *       library covers real scripting tasks end to end;
  *    2. as the payload for the in-game acceptance test: drop them into
- *       KarstPatcher\Scripts, start the game, and patcher.log must say
+ *       karstpatcher\Scripts, start the game, and karstpatcher.log must say
  *       "compile file succeed!" for each - which is the only evidence that
  *       matters, since that is the compiler the user will actually run.
  *
@@ -161,7 +161,7 @@ function main() {
   if (failures) { console.log('FAILED (' + failures + ')'); process.exit(1); }
   console.log('OK: ' + DEMOS.length + ' 个演示脚本已生成到 demo\\');
   console.log('下一步（可选）：');
-  console.log('  node tools\\script-studio\\tests\\make_demo.js --deploy "<游戏目录>\\KarstPatcher\\Scripts"');
+  console.log('  node tools\\script-studio\\tests\\make_demo.js --deploy "<游戏目录>\\karstpatcher\\Scripts"');
   console.log('  powershell -ExecutionPolicy Bypass -File tools\\script-studio\\verify_compile.ps1 -PathDir tools\\script-studio\\demo');
 }
 

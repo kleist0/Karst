@@ -7,7 +7,7 @@ rem
 rem    C++ half   Karst.dll                                ~263 KB
 rem               the Syringe-injected extension itself.
 rem
-rem    C# half    KarstPatcher\  = 22 DLLs + 2 .json       ~16.7 MB
+rem    C# half    karstpatcher\  = 22 DLLs + 2 .json       ~16.7 MB
 rem               the script HOST: the Roslyn compiler plus KarstPatcher /
 rem               KarstYRpp / KarstExtension and their .NET dependencies.
 rem               WITHOUT THIS FOLDER every .cs a user writes is SILENTLY
@@ -66,7 +66,7 @@ echo ============================================================
 echo  Karst packaging
 echo ============================================================
 echo   C++ half : Karst.dll                           ~263 KB
-echo   C#  half : KarstPatcher\  22 DLLs + 2 json       ~16.7 MB
+echo   C#  half : karstpatcher\  22 DLLs + 2 json       ~16.7 MB
 echo              ^<-- the script host. Without it, any .cs a
 echo                  user writes is silently ignored.
 echo   also     : 3 ini + 2 editor pages + docs + install README

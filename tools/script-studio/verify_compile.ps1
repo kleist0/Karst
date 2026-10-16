@@ -5,7 +5,7 @@
 #
 #  The studio generates C# from blocks. A block whose snippet does not compile
 #  is worse than a missing block: the user only discovers it after dropping the
-#  file into the game and reading patcher.log. So every block snippet, and every
+#  file into the game and reading karstpatcher.log. So every block snippet, and every
 #  combination of blocks we ship, must be compiled BEFORE it reaches the page.
 #
 #  This compiles a .cs exactly the way the in-game Roslyn host does, using the
@@ -17,9 +17,9 @@
 #     defines    : REALTIME_INI          (preprocessor_symbols)
 #     options    : /target:library /unsafe /optimize- /warn:4 /langversion:latest
 #
-#  MEASURED: compiling KarstPatcher\Scripts\MyFirst.cs through this script
+#  MEASURED: compiling karstpatcher\Scripts\MyFirst.cs through this script
 #  produces a byte-identical (same length, 4608) assembly to the one the game
-#  itself produced in KarstPatcher\Build\Scripts\. That is the evidence that
+#  itself produced in karstpatcher\Build\Scripts\. That is the evidence that
 #  this is a faithful stand-in, not an approximation.
 #
 #  Usage:
@@ -115,7 +115,7 @@ function Find-FrameworkDir {
 
 function Get-KarstPatcherDir {
     if ($PatcherDir) { return (Resolve-Path $PatcherDir).Path }
-    $p = Join-Path $GameDir 'KarstPatcher'
+    $p = Join-Path $GameDir 'karstpatcher'
     if (-not (Test-Path $p)) {
         throw "missing $p - pass -PatcherDir or -GameDir pointing at a Karst install."
     }

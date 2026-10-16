@@ -38,6 +38,11 @@ namespace
 
 	std::wstring g_assemblyDirectory;
 
+	// The game directory itself (the parent of g_assemblyDirectory), trailing
+	// separator included. Kept because the coexistence guard below has to look
+	// next to gamemd.exe, not inside our own folder.
+	std::wstring g_gameDirectory;
+
 	// Logs a failed HRESULT and stops the chain. Returns false so a caller can
 	// simply `if (!Step(...)) return false;`.
 	// Writes the script compiler's configuration if it is not there yet.
@@ -107,10 +112,10 @@ namespace
 	//
 	// The only visible symptom is one line in karst.log:
 	//
-	//     ScriptHost: _Assembly::CreateInstance(DynamicPatcher.Program) failed
+	//     ScriptHost: _Assembly::CreateInstance(KarstPatcher.Program) failed
 	//     (HRESULT 0x80131604)
 	//
-	// ...with NO patcher.log at all, because Patcher.Init throws while opening
+	// ...with NO karstpatcher.log at all, because Patcher.Init throws while opening
 	// that log file, before its own try block. Measured twice on 2026-10-12: the
 	// very same files load fine the moment the mark is removed.
 	//
@@ -149,6 +154,57 @@ namespace
 		::FindClose(find);
 	}
 
+	// -----------------------------------------------------------------------
+	// Coexistence guard  (docs, section 4.7)
+	//
+	// There is an older, incompatible script host in the wild: the
+	// DynamicPatcher generation this project's C# side was forked from. This is
+	// not a naming problem, and no rename fixes it:
+	//
+	//   * both hosts install runtime hooks at the SAME seven engine addresses -
+	//     TechnoClass ctor/dtor/Fire/ReceiveDamage and TechnoTypeClass
+	//     ctor/dtor/LoadFromINI. Measured on gamemd 1.001: those addresses are
+	//     ALREADY shared with Ares (5 of 7), Phobos (6 of 7) and Kratos (7 of 7),
+	//     which is harmless because their transfer stations chain. Two
+	//     DynamicPatcher-generation hosts do NOT chain - their transfer stations
+	//     reject each other (HookCanNotMixedException) and whoever installs
+	//     second overwrites the first, so the fault surfaces much later at an
+	//     address that belongs to neither host.
+	//   * both assemblies also define the same type names (TechnoExt,
+	//     TechnoTypeExt, Extension.Script.*), so a user script that references
+	//     both fails to compile with CS0433.
+	//
+	// So look for it BEFORE the CLR is asked to load anything, refuse to bring
+	// the script system up, and say exactly why. Every C++ feature of this DLL
+	// keeps working either way.
+	//
+	// THE NAMES BELOW ARE THE OTHER HOST'S, ON PURPOSE: recognising it is the
+	// entire job of this function, and this is the only place in this project
+	// where that name appears.
+	bool ForeignScriptHostMarker(const std::wstring& gameDirectory, std::wstring& marker)
+	{
+		if (gameDirectory.empty())
+			return false;
+
+		static const wchar_t* const kMarkers[] = {
+			L"DynamicPatcher.dll",
+			L"PatcherLoader.dll",
+			L"DynamicPatcher",
+		};
+
+		for (const wchar_t* candidate : kMarkers)
+		{
+			if (::GetFileAttributesW((gameDirectory + candidate).c_str())
+				!= INVALID_FILE_ATTRIBUTES)
+			{
+				marker = candidate;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	bool Failed(const char* what, HRESULT hr)
 	{
 		Karst::LogInfo(L"ScriptHost: %hs failed (HRESULT 0x%08X).",
@@ -175,7 +231,13 @@ namespace Karst
 			g_assemblyDirectory = gameDirectory;
 			if (g_assemblyDirectory.back() != L'\\' && g_assemblyDirectory.back() != L'/')
 				g_assemblyDirectory.push_back(L'\\');
-			g_assemblyDirectory += L"KarstPatcher";
+			// Remember the game folder itself before the host folder is appended:
+			// the coexistence guard looks for the other host next to gamemd.exe.
+			g_gameDirectory = g_assemblyDirectory;
+
+			// The deployed host directory is lower-case on purpose: one spelling
+			// for every path on disk (see docs, section 4.3).
+			g_assemblyDirectory += L"karstpatcher";
 
 			HRESULT hr = ::CLRCreateInstance(CLSID_CLRMetaHost, IID_PPV_ARGS(&g_metaHost));
 			if (FAILED(hr))
@@ -226,6 +288,24 @@ namespace Karst
 				return false;
 			}
 
+			// Refuse to start next to an incompatible generation of this host.
+			// See ForeignScriptHostMarker above for the measurement behind it.
+			{
+				std::wstring marker;
+				if (ForeignScriptHostMarker(g_gameDirectory, marker))
+				{
+					Karst::LogInfo(L"ScriptHost: '%ls' is present next to gamemd.exe, and "
+						L"that host cannot coexist with this one.", marker.c_str());
+					Karst::LogInfo(L"ScriptHost: both hook the same seven engine addresses "
+						L"and their hook transfer stations reject each other, so the game "
+						L"would crash later at an unrelated address. The script system is "
+						L"left OFF; Karst's C++ features are unaffected.");
+					Karst::LogInfo(L"ScriptHost: remove that host (or this one) if you want "
+						L"to use C# scripts. See section 4.7 of the developer guide.");
+					return false;
+				}
+			}
+
 			// Let the CLR find KarstPatcher.dll and, through it, KarstYRpp.dll and
 			// KarstExtension.dll. The runtime resolves a dependency next to the
 			// assembly that needs it, so one directory entry is enough.
@@ -264,7 +344,7 @@ namespace Karst
 			// Load_2 resolves by assembly DISPLAY NAME, not by file path.
 			//
 			// Measured: passing the absolute path
-			// "E:\...\KarstPatcher\KarstPatcher.dll" fails with 0x80131047
+			// "E:\...\karstpatcher\KarstPatcher.dll" fails with 0x80131047
 			// (COR_E_ASSEMBLYEXPECTED - "the file is not a valid assembly"),
 			// even though the file IS a valid assembly (verified with
 			// AssemblyName.GetAssemblyName). The runtime parses the argument as a
@@ -281,12 +361,12 @@ namespace Karst
 			if (FAILED(hr) || !assembly)
 				return Failed("_AppDomain::Load_2(KarstPatcher)", hr);
 
-			const wchar_t* typeName = L"DynamicPatcher.Program";
+			const wchar_t* typeName = L"KarstPatcher.Program";
 
 			_variant_t instance;
 			hr = assembly->CreateInstance(::SysAllocString(typeName), instance.GetAddress());
 			if (FAILED(hr))
-				return Failed("_Assembly::CreateInstance(DynamicPatcher.Program)", hr);
+				return Failed("_Assembly::CreateInstance(KarstPatcher.Program)", hr);
 
 			mscorlib::_Object* object = nullptr;
 			hr = instance.punkVal

@@ -4,7 +4,7 @@
 #  WHY THIS FILE STILL EXISTS
 #
 #  This script packages ONLY Karst.dll. But Karst is two halves: without the
-#  whole KarstPatcher\ folder (the C# host + Roslyn + dependencies, ~16 MB) the
+#  whole karstpatcher\ folder (the C# host + Roslyn + dependencies, ~16 MB) the
 #  user's .cs scripts are silently ignored at runtime - no error, no log line,
 #  just nothing happening. Measured 2026-10-12: a zip produced by this script
 #  held Karst.dll at 112,128 bytes while the current build is 263,168 bytes,
@@ -32,7 +32,7 @@ $ErrorActionPreference = 'Stop'
 
 Write-Host ""
 Write-Host "NOTE: package.ps1 is obsolete - it packaged only Karst.dll, without the" -ForegroundColor Yellow
-Write-Host "      C# script system (KarstPatcher\). Forwarding to package_full.ps1." -ForegroundColor Yellow
+Write-Host "      C# script system (karstpatcher\). Forwarding to package_full.ps1." -ForegroundColor Yellow
 Write-Host ""
 
 $forward = @{}

@@ -1,0 +1,6 @@
+[submodule "Sample/karstpatcher/Projects/Extension"]
+	path = Sample/karstpatcher/Projects/Extension
+	url = https://github.com/Xkein/PatcherExtension.git
+[submodule "Sample/karstpatcher/Projects/YRpp"]
+	path = Sample/karstpatcher/Projects/YRpp
+	url = https://github.com/Xkein/PatcherYRpp.git

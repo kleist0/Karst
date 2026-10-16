@@ -3,9 +3,9 @@
 > **用途**：给可视化积木库做"签名字典"。每条都尽量给出**可直接照抄的完整签名**，
 > 并标注 **来源文件:行号** 以便复核。
 > **边界**：只写源码里**确实存在**的东西；不存在的一律在 §10 明确列出。
-> 我读的是 `Karst\refs\DynamicPatcher\` 下的源码（= 构建 `KarstPatcher.dll` /
+> 我读的是 `Karst\refs\karstpatcher\` 下的源码（= 构建 `KarstPatcher.dll` /
 > `KarstYRpp.dll` / `KarstExtension.dll` 的那份），不是 NuGet 包，也不是旧版
-> YRDynamicPatcher 的样本。
+> 上游旧版样本。
 >
 > 标注约定：
 > * ✅ **已核实**：源码里逐字确认过签名。
@@ -19,9 +19,9 @@
 
 | 程序集 | 项目文件 | 根命名空间 | 源码目录 |
 | --- | --- | --- | --- |
-| `KarstPatcher.dll` | `DynamicPatcher\DynamicPatcher.csproj` | `DynamicPatcher` | `refs\DynamicPatcher\DynamicPatcher\` |
-| `KarstYRpp.dll` | `PatcherYRpp\PatcherYRpp.csproj`（`<AssemblyName>KarstYRpp</AssemblyName>`，`PatcherYRpp.csproj:11`） | `PatcherYRpp`、`PatcherYRpp.Utilities` | `refs\DynamicPatcher\PatcherYRpp\` |
-| `KarstExtension.dll` | `Extension\Extension.csproj`（`<AssemblyName>KarstExtension</AssemblyName>`，`Extension.csproj:11`） | `Extension.Ext` / `.Script` / `.Utilities` / `.Components` / `.Decorators` | `refs\DynamicPatcher\Extension\` |
+| `KarstPatcher.dll` | `karstpatcher\karstpatcher.csproj` | `KarstPatcher` | `refs\karstpatcher\karstpatcher\` |
+| `KarstYRpp.dll` | `PatcherYRpp\PatcherYRpp.csproj`（`<AssemblyName>KarstYRpp</AssemblyName>`，`PatcherYRpp.csproj:11`） | `PatcherYRpp`、`PatcherYRpp.Utilities` | `refs\karstpatcher\PatcherYRpp\` |
+| `KarstExtension.dll` | `Extension\Extension.csproj`（`<AssemblyName>KarstExtension</AssemblyName>`，`Extension.csproj:11`） | `Extension.Ext` / `.Script` / `.Utilities` / `.Components` / `.Decorators` | `refs\karstpatcher\Extension\` |
 
 三者都是 `TargetFrameworkVersion v4.8`（`Extension.csproj:12`、`PatcherYRpp.csproj:12`）。
 
@@ -30,7 +30,7 @@
 ```csharp
 using System;
 using System.Collections.Generic;
-using DynamicPatcher;              // Logger
+using KarstPatcher;              // Logger
 using Extension.Ext;               // TechnoExt / BulletExt / TechnoTypeExt / BulletTypeExt / AnimTypeExt / Container<,>
 using Extension.Script;            // TechnoScriptable / BulletScriptable / ScriptManager / Script / ScriptComponent
 using Extension.Utilities;         // ExtensionReference / INIReader / INI_EX / ContainerHelper
@@ -1705,7 +1705,7 @@ public struct SuperWeaponTypeClass
   （`MapClass.cs:32-36`，内部就是用 `CellClass.Coord2Cell`，并且**带范围检查**，
   越界时返回 `false` 而不是给你一个野指针）。
 * `Karst\docs\已有功能0.1.0.md` 里写的 `MapClass.Coord2Cell(...)` 是**错的**（正是
-  `refs\DynamicPatcher\README.md:476` 与 早期 HANDOFF 文档提到的旧样本 API）。
+  `refs\karstpatcher\README.md:476` 与 早期 HANDOFF 文档提到的旧样本 API）。
   建议顺手修文档（本次任务只允许新增 md，故只在这里记录）。
 
 ⚠️ `MapClass.GetCellIndex(CellStruct)`（`MapClass.cs:37-40`）**不做范围检查**；
@@ -1944,10 +1944,10 @@ public static class Game
 
 ---
 
-## 8. `Logger`（`DynamicPatcher\Logger.cs`）—— ✅ 全部核实
+## 8. `Logger`（`karstpatcher\Logger.cs`）—— ✅ 全部核实
 
 ```csharp
-namespace DynamicPatcher
+namespace KarstPatcher
 {
     public class Logger
     {
@@ -2416,7 +2416,7 @@ public class Script
 | `AnimClass.Create(...)` | ❌ 不存在 | `YRMemory.Create<AnimClass>(pAnimType, coords)`（❓ 待实测） | grep 0 命中；`AnimClass.cs:39-49` |
 | `MapClass.Coord2Cell` 的"类方法"形式 `MapClass.Instance.Coord2Cell(...)` | ❌ 不存在 | 同上 | 同第一行 |
 
-> `refs\DynamicPatcher\README.md:473-481` 记录了旧样本（`GGIScript.cs` / `MTNKScript.cs`）
+> `refs\karstpatcher\README.md:473-481` 记录了旧样本（`GGIScript.cs` / `MTNKScript.cs`）
 > 因为用了这些 API 被移出 `KarstPatcher`；`Karst\docs\已有功能0.1.0.md` 也说明了这一点。
 > **但它们没说明"正确写法是什么"**——本清单的右列就是那个缺失的答案。
 
@@ -2440,7 +2440,7 @@ public class Script
 | 14 | **`CellStruct.X/Y` 是 `short`** | 大坐标/计算溢出 | 计算用 `int`，最后构造 `new CellStruct(x, y)` | `BasicStructures.cs:248-249` |
 | 15 | **`WeaponTypeClass.Range` 是 ×256** | 拿它当"格"用会差 256 倍 | 除以 `256`（或 `Game.CellSize`） | `WeaponTypeClass.cs:27` |
 | 16 | **`Logger.Log` 格式串写错抛 `FormatException`** | 该脚本帧后续被跳过（异常被 `SafeScriptCall` 吃掉） | 格式串参数个数对齐；或用 `Logger.Log(str)` | `Logger.cs:18-23`；`ScriptManager.cs:363-373` |
-| 17 | **脚本异常被静默吃掉** | `SafeScriptCall` 只 `PrintException`，不中断也不上报给用户 | 调试期多看 `patcher.log` | `ScriptManager.cs:355-373` |
+| 17 | **脚本异常被静默吃掉** | `SafeScriptCall` 只 `PrintException`，不中断也不上报给用户 | 调试期多看 `karstpatcher.log` | `ScriptManager.cs:355-373` |
 | 18 | **保存裸 `Pointer<T>` 跨帧** | 对象销毁后悬空 | 用 `ExtensionReference<TExt>`（§9.4） | `ExtensionReference.cs` |
 | 19 | **`DecoratorId` 重复 `Add` 抛异常** | `Dictionary.Add` | 先 `Get(id)` 判断，或让组件随机 id | `DecoratorMap.cs:50-54` |
 | 20 | **`TechnoClass.Type` 是属性，子类 `Type` 是字段** | 混用会编译错 | 按 §2.1/§2.6 的表 | `TechnoClass.cs:191` vs `UnitClass.cs:21` |

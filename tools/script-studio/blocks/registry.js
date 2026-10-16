@@ -14,7 +14,7 @@
  *  Every snippet below was written against the verified API inventory
  *  (Karst\docs\脚本API参考.md) and is compiled by tests\build_cases.js.
  *  Being careful here is not pedantry: the failure mode of a wrong snippet is
- *  an `error CS...` in the user's patcher.log, long after the page said "ok".
+ *  an `error CS...` in the user's karstpatcher.log, long after the page said "ok".
  *
  *  Design rule taken from the inventory - never generate a bare `.Ref` on a
  *  pointer that can be null. A null `Ref` is an AccessViolationException, which
@@ -250,7 +250,7 @@
     log: {
       label: '打日志',
       group: '日志与调试',
-      hint: '输出到 KarstPatcher\\patcher.log，用来确认脚本真的跑起来了。',
+      hint: '输出到 karstpatcher\\karstpatcher.log，用来确认脚本真的跑起来了。',
       needs: [],
       args: [
         { k: 'level', label: '级别', type: 'enum', def: 'info', opts: [['info', '普通'], ['warn', '警告'], ['error', '错误']] },

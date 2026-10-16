@@ -1,12 +1,12 @@
 // 由 Karst 脚本工作室生成 —— 用积木搭出来的脚本。
-// 放到 <游戏目录>\KarstPatcher\Scripts\ 下即可，Karst 会自动编译。
+// 放到 <游戏目录>\karstpatcher\Scripts\ 下即可，Karst 会自动编译。
 //
 // 下面这行是积木数据，用来"再次编辑"时还原积木视图。
 // 删掉它脚本照样能编译，但页面就只能当普通代码编辑器用了：
 // @karst-studio {"v":1,"cls":"StudioDemoMissileRain","base":"techno","binding":"MTNK","events":[{"id":"OnFire","conds":[],"acts":[{"t":"rememberTarget","a":{},"i":"b1"},{"t":"log","a":{"level":"info","msg":"锁定目标"},"i":"b2"}]},{"id":"OnUpdate","conds":[{"t":"hasRemembered","a":{},"i":"b3"},{"t":"everyNFrames","a":{"n":15},"i":"b4"}],"acts":[{"t":"damageRemembered","a":{"wh":"BlimpHE","dmg":20},"i":"b5"},{"t":"logRememberedPos","a":{},"i":"b6"}]}]}
 
 using System;
-using DynamicPatcher;            // Logger
+using KarstPatcher;            // Logger
 using Extension.Ext;             // TechnoExt
 using Extension.Script;          // TechnoScriptable
 using Extension.Utilities;       // ExtensionReference（记住别的对象时要用）

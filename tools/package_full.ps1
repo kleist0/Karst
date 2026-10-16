@@ -5,7 +5,7 @@
 #
 #  package.ps1 predates the C# script system. It packages only Karst.dll, so a
 #  zip built with it silently ships a Karst whose scripting is dead: ClrHost
-#  looks for <game>\KarstPatcher\, finds nothing, and every .cs the user writes
+#  looks for <game>\karstpatcher\, finds nothing, and every .cs the user writes
 #  is quietly ignored. Measured on 2026-10-12:
 #
 #     dist\Karst-0.1.0-20261011-0442.zip contains Karst.dll (112,128 B)
@@ -20,10 +20,10 @@
 #     <game>\karst.ini                      its own configuration
 #     <game>\karst.hotreload.ini            INI hot-reload target list
 #     <game>\karst.scripts.ini              JSON appearance-script settings
-#     <game>\KarstPatcher\*.dll             the C# host + Roslyn + deps (22 DLLs)
-#     <game>\KarstPatcher\compiler.config.json     \
-#     <game>\KarstPatcher\karstpatcher.config.json  > NOT in the repo - see below
-#     <game>\KarstPatcher\Scripts\*.cs      the user's scripts (created by them)
+#     <game>\karstpatcher\*.dll             the C# host + Roslyn + deps (22 DLLs)
+#     <game>\karstpatcher\compiler.config.json     \
+#     <game>\karstpatcher\karstpatcher.config.json  > NOT in the repo - see below
+#     <game>\karstpatcher\Scripts\*.cs      the user's scripts (created by them)
 #
 #  The two .json files exist ONLY in the game install: they were hand-made
 #  during development, so a fresh clone cannot reproduce a working install from
@@ -58,7 +58,7 @@ $tools   = $PSScriptRoot
 $karst   = Split-Path -Parent $tools
 $sln     = Join-Path $karst 'Karst.sln'
 $dll     = Join-Path $karst 'Release\Karst.dll'
-$refs    = Join-Path $karst 'refs\DynamicPatcher'
+$refs    = Join-Path $karst 'refs\karstpatcher'
 $csOut   = Join-Path $refs 'Extension\bin\Release'
 # Where the package lands: a folder in the REPO ROOT with a self-explanatory
 # name, so you do not have to go hunting inside dist\. (It used to be "dist",
@@ -168,8 +168,8 @@ Step "stage -> dist\$name"
 $stage = Join-Path $distDir $name
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force (Join-Path $stage 'docs')            | Out-Null
-New-Item -ItemType Directory -Force (Join-Path $stage 'KarstPatcher')    | Out-Null
-New-Item -ItemType Directory -Force (Join-Path $stage 'KarstPatcher\Scripts') | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $stage 'karstpatcher')    | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $stage 'karstpatcher\Scripts') | Out-Null
 
 # C++ side
 Copy-Item $dll (Join-Path $stage 'Karst.dll') -Force
@@ -182,7 +182,7 @@ foreach ($ini in 'karst.ini', 'karst.hotreload.ini', 'karst.scripts.ini') {
 # C# side: every DLL from the Extension output (it already aggregates the NuGet
 # dependencies), plus the two config files that the repo does not carry.
 Get-ChildItem $csOut -File -Filter *.dll | ForEach-Object {
-    Copy-Item $_.FullName (Join-Path $stage "KarstPatcher\$($_.Name)") -Force
+    Copy-Item $_.FullName (Join-Path $stage "karstpatcher\$($_.Name)") -Force
 }
 
 $compilerConfig = @'
@@ -213,8 +213,8 @@ $patcherConfig = @'
     "hide_console" : true
 }
 '@
-Set-Content -Path (Join-Path $stage 'KarstPatcher\compiler.config.json')    -Value $compilerConfig -Encoding UTF8
-Set-Content -Path (Join-Path $stage 'KarstPatcher\karstpatcher.config.json') -Value $patcherConfig  -Encoding UTF8
+Set-Content -Path (Join-Path $stage 'karstpatcher\compiler.config.json')    -Value $compilerConfig -Encoding UTF8
+Set-Content -Path (Join-Path $stage 'karstpatcher\karstpatcher.config.json') -Value $patcherConfig  -Encoding UTF8
 
 # Editors: the user-facing pages, taken from their built copies.
 # The appearance editor is BUILT into tools\script-editor\. The repo root used to
@@ -233,7 +233,7 @@ foreach ($d in '已有功能0.1.0.md', '脚本API参考.md') {
 $scriptsReadme = @"
 把你的 C# 脚本（.cs）放在这个目录里。
 
-Karst 会在游戏启动时、以及每次文件变化时自动编译它们，日志见 ..\patcher.log 。
+Karst 会在游戏启动时、以及每次文件变化时自动编译它们，日志见 ..\karstpatcher.log 。
 脚本写好后，在 rulesmd.ini 里给目标单位加一行（值是类名，大小写敏感）：
 
     [MTNK]
@@ -244,7 +244,7 @@ Karst 会在游戏启动时、以及每次文件变化时自动编译它们，�
 不想手写？用同目录的 ..\..\KarstScriptStudio.html（双击打开，用独立浏览器窗口），
 搭积木生成脚本；脚本写法看 docs\已有功能0.1.0.md ，可用 API 查 docs\脚本API参考.md 。
 "@
-Set-Content -Path (Join-Path $stage 'KarstPatcher\Scripts\README.txt') -Value $scriptsReadme -Encoding UTF8
+Set-Content -Path (Join-Path $stage 'karstpatcher\Scripts\README.txt') -Value $scriptsReadme -Encoding UTF8
 
 $readme = @"
 Karst $version - 安装说明
@@ -267,7 +267,7 @@ Karst $version - 安装说明
        （也就是有 Syringe.exe / Ares.dll 的那个目录）。
     2. 把 karst.ini、karst.hotreload.ini、karst.scripts.ini 也复制过去。
        三个都可以不要：没有它们就用内置默认值。
-    3. 把整个 KarstPatcher\ 目录复制到 gamemd.exe 所在目录。
+    3. 把整个 karstpatcher\ 目录复制到 gamemd.exe 所在目录。
        ⚠️ 少了它，C# 脚本系统不会工作 —— 脚本文件会被静默忽略。
     4. 用 Syringe.exe 启动游戏（或你原来的 Ares 启动方式）：
            Syringe.exe gamemd.exe
@@ -281,7 +281,7 @@ Karst $version - 安装说明
             karst.ini
             karst.hotreload.ini
             karst.scripts.ini
-            KarstPatcher\            <- 必须整个复制，里面有 Roslyn 与依赖
+            karstpatcher\            <- 必须整个复制，里面有 Roslyn 与依赖
                 KarstPatcher.dll
                 KarstYRpp.dll
                 KarstExtension.dll
@@ -306,23 +306,23 @@ Karst $version - 安装说明
           Enabled=yes              总开关
           LogLevel=info            正常玩用 info，排错时改 debug
           DebugLog=yes             额外写 karst.log（排错用）
-    * C# 脚本的编译与加载日志在 KarstPatcher\patcher.log 。
+    * C# 脚本的编译与加载日志在 karstpatcher\karstpatcher.log 。
 
 五、排错
     1. 游戏没反应 / 注入失败：
        确认 gamemd.exe 与 Syringe.exe 都以【管理员身份】运行 —— 未提权时
        Syringe 会直接报 "No or invalid command line arguments given" 并退出。
     2. 脚本没生效：
-       看 KarstPatcher\patcher.log 。出现 "compile file succeed!" 说明编译成功；
+       看 karstpatcher\karstpatcher.log 。出现 "compile file succeed!" 说明编译成功；
        "error CS...." 是编译错误（带文件与行号）；再看 rulesmd.ini 里的
        Scripts=类名 是否拼对（大小写敏感），并且改完要重开一局。
-    3. KarstPatcher\patcher.log 根本不存在（脚本系统完全没起来）：
+    3. karstpatcher\karstpatcher.log 根本不存在（脚本系统完全没起来）：
        这是"文件带网络来源标记"造成的 —— 从网盘 / 聊天软件下载的压缩包解压后，
-       Windows 会给文件打上 Zone.Identifier，.NET 因此拒绝加载 KarstPatcher 里的
+       Windows 会给文件打上 Zone.Identifier，.NET 因此拒绝加载 karstpatcher 里的
        程序集。本版本已在启动时自动清掉该标记，正常情况下**你不需要做任何事**
        （日志里会出现 "removed the 'downloaded from the Internet' mark from ..."）。
        只有在使用更早版本时，才需要手动执行一次：
-           Get-ChildItem KarstPatcher -Recurse | Unblock-File
+           Get-ChildItem karstpatcher -Recurse | Unblock-File
     4. 崩溃：
        debug\snapshot-*\except.txt 里有异常地址与寄存器；
        把游戏目录下的 karst.log（需 DebugLog=yes）发给开发者。
@@ -367,7 +367,7 @@ if ($Deploy) {
         $src = Join-Path $karst $ini
         if (Test-Path $src) { Copy-Item $src (Join-Path $Deploy $ini) -Force }
     }
-    $tgt = Join-Path $Deploy 'KarstPatcher'
+    $tgt = Join-Path $Deploy 'karstpatcher'
     New-Item -ItemType Directory -Force $tgt | Out-Null
     New-Item -ItemType Directory -Force (Join-Path $tgt 'Scripts') | Out-Null
     $i = 0
@@ -376,7 +376,7 @@ if ($Deploy) {
     }
     Set-Content -Path (Join-Path $tgt 'compiler.config.json')    -Value $compilerConfig -Encoding UTF8
     Set-Content -Path (Join-Path $tgt 'karstpatcher.config.json') -Value $patcherConfig  -Encoding UTF8
-    Ok ("Karst.dll + 3 ini + {0} DLL into KarstPatcher\ + 2 config" -f $i)
+    Ok ("Karst.dll + 3 ini + {0} DLL into karstpatcher\ + 2 config" -f $i)
     Ok ("hash match: {0}" -f ((Get-FileHash $dll).Hash -eq (Get-FileHash (Join-Path $Deploy 'Karst.dll')).Hash))
     Warn 'Scripts\ 目录里的用户脚本没有被覆盖。现在运行 restart_test.bat（或 Syringe）验证。'
 }

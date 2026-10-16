@@ -11,7 +11,7 @@
  *       allowed in), then all of them are compiled through verify_compile.ps1 -
  *       the same reference set and options the in-game Roslyn host uses. A block
  *       whose snippet has a typo therefore fails HERE, in a test, instead of in
- *       the user's patcher.log after they dropped the file into the game.
+ *       the user's karstpatcher.log after they dropped the file into the game.
  *
  *    2. REAL COMBINATIONS COMPILE. Single blocks are the easy case; the bugs
  *       live in the interactions - two blocks in one event both declaring a
@@ -279,7 +279,7 @@ function buildComboCases() {
       conds: [],
       acts: [
         { t: 'log', a: { level: 'info', msg: '他说"你好" \\ 反斜杠 {0} 花括号' } },
-        { t: 'log', a: { level: 'warn', msg: '路径 C:\\Games\\RA2\\KarstPatcher' } },
+        { t: 'log', a: { level: 'warn', msg: '路径 C:\\Games\\RA2\\karstpatcher' } },
         { t: 'log', a: { level: 'error', msg: '换行\n也要转义' } }
       ]
     }

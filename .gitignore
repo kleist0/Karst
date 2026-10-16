@@ -35,7 +35,7 @@ Release/
 
 # The built tools (tools\*.exe) are products of tools\build_tools.bat.
 # Scoped to tools\ on purpose: a bare *.dll/*.exe rule would also swallow
-# refs\DynamicPatcher\Libraries\*.dll, which are NOT NuGet-restorable and must
+# refs\karstpatcher\Libraries\*.dll, which are NOT NuGet-restorable and must
 # be committed (they come from the VS SDK).
 tools/*.exe
 tools/*.obj
@@ -52,7 +52,7 @@ tools/*.obj
 # first run (needs internet once).
 refs/**/bin/
 refs/**/obj/
-!refs/DynamicPatcher/Libraries/*.dll
+!refs/karstpatcher/Libraries/*.dll
 
 # --- packaging -------------------------------------------------------------
 dist/
@@ -83,3 +83,8 @@ tools/script-studio/data/
 *.rej
 Thumbs.db
 desktop.ini
+
+# --- local scratch ---------------------------------------------------------
+# Throwaway analysis helpers (one-off probe / rename scripts). Never shipped,
+# never referenced by the build.
+_scratch/

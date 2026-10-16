@@ -23,7 +23,7 @@ Karst\tools\script-studio\KarstScriptStudio.html
 
 ### 1.2 搭一个脚本
 
-1. 右上角 **选择脚本目录…** → 选 `<游戏目录>\KarstPatcher\Scripts`
+1. 右上角 **选择脚本目录…** → 选 `<游戏目录>\karstpatcher\Scripts`
    （只需一次；浏览器重启后要再点一次"重新授权"，页面会提示）
 2. 左边 **事件** 里点一个，比如「每帧 OnUpdate」
 3. 再点 **条件**（比如「每 60 帧」）和 **动作**（比如「记录自己的坐标/血量」）
@@ -32,7 +32,7 @@ Karst\tools\script-studio\KarstScriptStudio.html
 5. 点 **保存到脚本目录**，文件就写进 `Scripts\`
 
 保存后**不用重启游戏**：Karst 的 `CodeWatcher` 会自动重编译。
-去 `<游戏目录>\KarstPatcher\patcher.log` 看 `compile file succeed!`。
+去 `<游戏目录>\karstpatcher\karstpatcher.log` 看 `compile file succeed!`。
 
 ### 1.3 让脚本真的生效
 
@@ -122,11 +122,11 @@ Karst\tools\script-studio\
 
 | 项 | 值 | 来源 |
 | --- | --- | --- |
-| references | mscorlib / System / System.Core / System.Data / KarstPatcher / KarstYRpp / KarstExtension | `compiler.config.json` + 源码里硬编码的 KarstPatcher/mscorlib |
+| references | mscorlib / System / System.Core / System.Data / KarstPatcher / KarstYRpp / KarstExtension | `compiler.config.json` + 源码里硬编码的 karstpatcher/mscorlib |
 | define | `REALTIME_INI` | `preprocessor_symbols` |
 | 选项 | `/target:library /unsafe /optimize- /warn:4 /langversion:latest /nostdlib+` | `CompilationManager` 的 `CSharpCompilationOptions` |
 
-**证据**：用它编译 `KarstPatcher\Scripts\MyFirst.cs`，产出的程序集与游戏自己编译出来的
+**证据**：用它编译 `karstpatcher\Scripts\MyFirst.cs`，产出的程序集与游戏自己编译出来的
 那份**长度完全一致（4608 字节）**。所以它是等价代理，不是近似。
 
 ---
@@ -155,7 +155,7 @@ powershell -ExecutionPolicy Bypass -File Karst\tools\script-studio\verify_compil
 
 # 5) 重新生成演示脚本（并可选部署到测试游戏）
 node Karst\tools\script-studio\tests\make_demo.js
-node Karst\tools\script-studio\tests\make_demo.js --deploy "E:\_game\RA2\yr_karst_test\KarstPatcher\Scripts"
+node Karst\tools\script-studio\tests\make_demo.js --deploy "E:\_game\RA2\yr_karst_test\karstpatcher\Scripts"
 ```
 
 改了积木库之后的**固定顺序**：`build_studio.ps1` → `run_tests.js --compile` → `check_page.js`。

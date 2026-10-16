@@ -81,7 +81,7 @@
     <details class="data" id="csSection">
       <summary>C# 脚本骨架（进阶：给会写代码的人）</summary>
       <p class="muted">
-        生成一个可直接放进 <code>KarstPatcher\Scripts\</code> 的 <code>.cs</code>。
+        生成一个可直接放进 <code>karstpatcher\Scripts\</code> 的 <code>.cs</code>。
         它只是骨架——把每个事件里的 <code>/* TODO */</code> 换成你的逻辑即可。
       </p>
 
@@ -470,10 +470,10 @@ function buildCs() {
   if (!methods) methods = '\n        // 没有勾选任何事件。\n';
 
   return '// 由 Karst 脚本编辑器生成\n'
-       + '// 放到 <游戏目录>\\KarstPatcher\\Scripts\\ 下即可\n'
+       + '// 放到 <游戏目录>\\karstpatcher\\Scripts\\ 下即可\n'
        + '\n'
        + 'using System;\n'
-       + 'using DynamicPatcher;            // Logger\n'
+       + 'using KarstPatcher;            // Logger\n'
        + 'using Extension.Ext;             // TechnoExt\n'
        + 'using Extension.Script;          // TechnoScriptable\n'
        + 'using Extension.Utilities;       // ExtensionReference（保存别的对象时要用）\n'
@@ -516,7 +516,7 @@ el('csDownload').addEventListener('click', () => {
   a.download = cls + '.cs';
   a.click();
   URL.revokeObjectURL(a.href);
-  status('ok', '已下载 ' + cls + '.cs —— 放进 KarstPatcher\\Scripts\\ 即可。');
+  status('ok', '已下载 ' + cls + '.cs —— 放进 karstpatcher\\Scripts\\ 即可。');
 });
 
 // --- start -----------------------------------------------------------------

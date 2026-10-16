@@ -9,10 +9,10 @@ rem    3. validates the hooks (hookcheck + hookconflict) and REFUSES to deploy
 rem       if a hook overlaps another extension's - that has crashed the game
 rem    4. copies into the game folder:
 rem         Karst.dll + karst.ini + karst.hotreload.ini + karst.scripts.ini
-rem         KarstPatcher\  (22 DLLs + compiler.config.json + karstpatcher.config.json)
+rem         karstpatcher\  (22 DLLs + compiler.config.json + karstpatcher.config.json)
 rem    5. also writes a distributable zip into the package folder in the repo root
 rem
-rem  It does NOT touch KarstPatcher\Scripts\ - your own .cs files stay put.
+rem  It does NOT touch karstpatcher\Scripts\ - your own .cs files stay put.
 rem
 rem  Usage:
 rem    deploy_to_test_game.bat                       default folder (see GAME below)
@@ -95,7 +95,7 @@ echo      Without elevation Syringe exits immediately with
 echo      "No or invalid command line arguments given".
 echo   3. To confirm it worked, look at:
 echo        %GAME%\karst.log                    -^> "Karst started", "First frame reached"
-echo        %GAME%\KarstPatcher\patcher.log     -^> "...**\*.cs: first action complete!"
+echo        %GAME%\karstpatcher\karstpatcher.log     -^> "...**\*.cs: first action complete!"
 echo.
 pause
 endlocal

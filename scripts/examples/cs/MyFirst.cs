@@ -4,16 +4,16 @@
 //  这个文件验证过可以编译、可以运行（见 docs\脚本编写.md）。
 //
 //  用法：
-//    1. 把本文件放到 <游戏目录>\KarstPatcher\Scripts\
+//    1. 把本文件放到 <游戏目录>\karstpatcher\Scripts\
 //    2. 在 rulesmd.ini 给目标单位加一行：  [MTNK] Scripts=MyFirst
 //    3. 进游戏造一辆灰熊坦克
-//    4. 观察 <游戏目录>\KarstPatcher\patcher.log 会不断出现 "MyFirst tick N"
+//    4. 观察 <游戏目录>\karstpatcher\karstpatcher.log 会不断出现 "MyFirst tick N"
 //
 //  注意：`Scripts=` 的值是**类名**（MyFirst），不是文件名。
 // ===========================================================================
 
 using System;
-using DynamicPatcher;            // Logger
+using KarstPatcher;            // Logger
 using Extension.Ext;             // TechnoExt
 using Extension.Script;          // TechnoScriptable
 using PatcherYRpp;               // Pointer、CoordStruct 等

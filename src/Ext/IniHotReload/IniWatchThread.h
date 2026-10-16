@@ -23,7 +23,7 @@
 //     or race the engine.
 //
 // This is where this module deliberately parts ways with the reference
-// implementation (YRDynamicPatcher's DynamicLoadINI.cs). That one sleeps inside
+// implementation (the upstream DynamicLoadINI.cs). That one sleeps inside
 // its change handler and then stops the game thread with a semaphore to do the
 // reload from the watcher thread. Karst already runs code once per frame on the
 // game thread, so no such handshake is needed - and its failure mode (a
