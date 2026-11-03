@@ -13,6 +13,7 @@
 #include <Ext/CountryArt/CountryArt.h>
 #include <Ext/BuildCost/BuildCost.h>
 #include <Ext/VirtualSeat/VirtualSeat.h>
+#include <Ext/DistributeSW/DistributeSW.h>
 #include <Version.h>
 
 #include <Helpers/Macro.h>
@@ -40,8 +41,12 @@
 // `push "OpenTopped"` in that same per-type rules reader; 0x7104C0, the
 // passenger-exit step of a dying carrier; and 0x6F3AD0 / 0x6F3D50, the head and
 // tail of TechnoClass::GetFLH, where a ghost seat is re-pointed at its own gun
-// port (the head captures the object, the tail rewrites the result). The count
-// below is therefore 16.
+// port (the head captures the object, the tail rewrites the result).
+//
+// Ext\DistributeSW adds NO hook: Ares and Phobos own the head of both
+// SuperClass::Launch and SuperClass::ClickFire, so consumption is detected from
+// the engine's own IsCharged transition instead (see the module header). The
+// count below is therefore 16.
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID /*lpReserved*/)
 {
@@ -868,4 +873,5 @@ DEFINE_HOOK(6F3D50, karst_VirtualSeat_GhostFLH_Exit, 10)
 
 	return 0;
 }
+
 

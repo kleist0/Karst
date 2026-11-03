@@ -85,6 +85,15 @@ namespace Karst
 			//   that search covers.
 			constexpr unsigned Techno_Owner = 0x108;
 
+			// Where the owning house actually sits on a BuildingClass.
+			//
+			// MEASURED 2026-11-03 in a live match (DistributeSW diagnostic): the
+			// search below matched HouseClass::Array membership at +0x14C on every
+			// building it looked at, so that is the pointer to read when the cheap
+			// path is wanted. The search is still the fallback, because this offset
+			// is only confirmed for BuildingClass on this engine build.
+			constexpr unsigned Building_Owner = 0x14C;
+
 			// Owning-house search window, in bytes from the object start.
 			//
 			// The documented 0x108 held 0 or 1 on a deployed construction yard, and

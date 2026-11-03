@@ -6,6 +6,7 @@
 #include <Ext/ShowByCountry/ShowByCountry.h>
 #include <Ext/BuildCost/BuildCost.h>
 #include <Ext/VirtualSeat/VirtualSeat.h>
+#include <Ext/DistributeSW/DistributeSW.h>
 #include <Script/ClrHost.h>
 #include <Version.h>
 
@@ -117,6 +118,11 @@ void KarstExtension::OnGameStart()
 	// which is what its hook at 0x7143BD is for. DryRun defaults to ON, so this
 	// reports what would be built and creates nothing.
 	Karst::Ext::VirtualSeat::Init();
+
+	// A SEPARATE feature (Ext\DistributeSW). Nothing to prepare: the key lives in
+	// a superweapon type's own rules section and is read on first use, and the
+	// per-building charges are rebuilt from the live building list every frame.
+	Karst::Ext::DistributeSW::Init();
 
 	// C# scripts. The host is started here so any problem with the assemblies is
 	// reported before the game gets far; the scripts themselves act later, at the
@@ -262,6 +268,12 @@ void KarstExtension::OnFrame()
 	// DryRun=no, attaches their seat objects. With no type declaring
 	// VirtualSeat= it is one map lookup and a dictionary miss per object.
 	Karst::Ext::VirtualSeat::OnFrame();
+
+	// A SEPARATE feature (Ext\DistributeSW). Rebuilds the per-building charge
+	// table from the live building list and drives the engine's single cameo for
+	// each superweapon type whose section says DistributeBuild=yes. With no such
+	// type it is one pass over the building list that finds nothing.
+	Karst::Ext::DistributeSW::OnFrame();
 
 	// C# scripts: drive their per-frame callback.
 	//
