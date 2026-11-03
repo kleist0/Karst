@@ -8,7 +8,7 @@ rem    2. builds BOTH halves: C++ via MSBuild, C# via build_refs.bat
 rem    3. validates the hooks (hookcheck + hookconflict) and REFUSES to deploy
 rem       if a hook overlaps another extension's - that has crashed the game
 rem    4. copies into the game folder:
-rem         Karst.dll + karst.ini + karst.hotreload.ini + karst.scripts.ini
+rem         Karst.dll + karst.ini + karst.hotreload.ini
 rem         dyrinpr\  (22 DLLs + compiler.config.json + dyrinpr.config.json)
 rem    5. also writes a distributable zip into the package folder in the repo root
 rem

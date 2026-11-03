@@ -3,9 +3,6 @@
 #include <Windows.h>
 
 #include <Config/KarstConfig.h>
-#include <Script/ScriptLoader.h>
-
-#include <vector>
 
 // The extension's main object.
 //
@@ -29,26 +26,6 @@ class KarstExtension
 public:
 	// Process-wide state. Safe to touch from anywhere in the DLL.
 	static Karst::Config& GetConfig();
-
-	// The appearance rules the user's scripts declared, loaded once at start.
-	//
-	// Scripts take precedence over the equivalent INI settings: a module that
-	// reads a building's art configuration consults this first, and only falls
-	// back to the INI when the script says nothing about that building.
-	//
-	// The list lives in the script module, which owns it and replaces it when a
-	// script changes - so a consumer that reads it again sees the new rules with
-	// no notification needed.
-	static const std::vector<Karst::Script::AppearanceRule>& GetScriptAppearanceRules();
-
-	// True when scripts were enabled and their list was read (even if it declared
-	// nothing). Lets a module tell "no script rules" from "scripts are off".
-	static bool ScriptsEnabled();
-
-	// Called once per frame from the main loop. Re-reads the scripts when one of
-	// them changed, and asks the modules that act on the rules to pick them up.
-	// Returns true when a reload happened.
-	static bool ReloadScriptsIfChanged();
 
 	// --- Lifecycle -------------------------------------------------------
 

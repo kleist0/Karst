@@ -184,7 +184,7 @@ node Karst\tools\script-studio\tests\make_demo.js --deploy "E:\_game\RA2\yr_kars
 ## 5. 踩过的坑（会重复踩）
 
 1. **PowerShell 脚本必须 UTF-8 with BOM**（见 §3）。现象是报一堆与中文无关的语法错误。
-   现有 `tools\script-editor\build_editor.ps1` 就是带 BOM 的。
+   现有 `tools\package_full.ps1` 就是带 BOM 的。
 2. **内联顺序 = 依赖顺序**。`codegen.js` 在浏览器里是**加载时**取
    `root.KarstMetadata`；把它排在 `metadata.js` 前面，构建照样"成功"，但页面第一次
    生成代码就抛 `Cannot read properties of undefined (reading 'encode')`。

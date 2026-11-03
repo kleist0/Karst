@@ -44,10 +44,8 @@
          rules key while the engine reads a type's section, then attaches hidden seat
          objects to carriers that are on the map; see src\Ext\VirtualSeat\VirtualSeat.h. -->
     <ClCompile Include="src\Ext\VirtualSeat\VirtualSeat.cpp" />
-    <!-- Scripts: user-authored JSON that configures Karst. The loader produces a
-         plain rule table and touches no engine state; see src\Script\ScriptLoader.h. -->
-    <ClCompile Include="src\Script\Json.cpp" />
-    <ClCompile Include="src\Script\ScriptLoader.cpp" />
+    <!-- Scripts: the C# script host. Starts the .NET runtime and loads the
+         assemblies under <game>\dyrinpr\; see src\Script\ClrHost.h. -->
     <ClCompile Include="src\Script\ClrHost.cpp">
       <!-- #import is incompatible with /MP (error C2813): it writes mscorlib.tlh
            next to the source, and concurrent compiles would race on that file. -->
@@ -73,8 +71,6 @@
     <ClInclude Include="src\Ext\IniHotReload\IniSnapshot.h" />
     <ClInclude Include="src\Ext\IniHotReload\IniWatchThread.h" />
     <ClInclude Include="src\Ext\VirtualSeat\VirtualSeat.h" />
-    <ClInclude Include="src\Script\Json.h" />
-    <ClInclude Include="src\Script\ScriptLoader.h" />
     <ClInclude Include="src\Script\ClrHost.h" />
     <None Include="docs\IniHotReload.md" />
     <None Include="tools\smoke_test.cpp" />

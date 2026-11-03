@@ -19,7 +19,6 @@
 #     <game>\Karst.dll                      the C++ extension (Syringe loads it)
 #     <game>\karst.ini                      its own configuration
 #     <game>\karst.hotreload.ini            INI hot-reload target list
-#     <game>\karst.scripts.ini              JSON appearance-script settings
 #     <game>\dyrinpr\*.dll             the C# host + Roslyn + deps (22 DLLs)
 #     <game>\dyrinpr\compiler.config.json     \
 #     <game>\dyrinpr\dyrinpr.config.json  > NOT in the repo - see below
@@ -173,7 +172,7 @@ New-Item -ItemType Directory -Force (Join-Path $stage 'dyrinpr\Scripts') | Out-N
 
 # C++ side
 Copy-Item $dll (Join-Path $stage 'Karst.dll') -Force
-foreach ($ini in 'karst.ini', 'karst.hotreload.ini', 'karst.scripts.ini') {
+foreach ($ini in 'karst.ini', 'karst.hotreload.ini') {
     $src = Join-Path $karst $ini
     if (Test-Path $src) { Copy-Item $src (Join-Path $stage $ini) -Force }
     else { Warn "missing $ini - skipped" }
@@ -216,12 +215,7 @@ $patcherConfig = @'
 Set-Content -Path (Join-Path $stage 'dyrinpr\compiler.config.json')    -Value $compilerConfig -Encoding UTF8
 Set-Content -Path (Join-Path $stage 'dyrinpr\dyrinpr.config.json') -Value $patcherConfig  -Encoding UTF8
 
-# Editors: the user-facing pages, taken from their built copies.
-# The appearance editor is BUILT into tools\script-editor\. The repo root used to
-# carry a second copy that this line took; that copy was removed (it was a
-# duplicate of the build product, and the build script only ever writes the one
-# under tools\). So take the built file.
-Copy-Item (Join-Path $tools 'script-editor\script-editor.html') (Join-Path $stage 'script-editor.html') -Force
+# Editor: the user-facing page, taken from its built copy.
 $studioHtml = Join-Path $tools 'script-studio\KarstScriptStudio.html'
 if (Test-Path $studioHtml) { Copy-Item $studioHtml (Join-Path $stage 'KarstScriptStudio.html') -Force }
 foreach ($d in '已有功能0.1.0.md', '脚本API参考.md') {
@@ -265,8 +259,8 @@ Karst $version - 安装说明
 二、安装
     1. 把 Karst.dll 复制到 gamemd.exe 所在目录
        （也就是有 Syringe.exe / Ares.dll 的那个目录）。
-    2. 把 karst.ini、karst.hotreload.ini、karst.scripts.ini 也复制过去。
-       三个都可以不要：没有它们就用内置默认值。
+    2. 把 karst.ini、karst.hotreload.ini 也复制过去。
+       两个都可以不要：没有它们就用内置默认值。
     3. 把整个 dyrinpr\ 目录复制到 gamemd.exe 所在目录。
        ⚠️ 少了它，C# 脚本系统不会工作 —— 脚本文件会被静默忽略。
     4. 用 Syringe.exe 启动游戏（或你原来的 Ares 启动方式）：
@@ -280,7 +274,6 @@ Karst $version - 安装说明
             Karst.dll
             karst.ini
             karst.hotreload.ini
-            karst.scripts.ini
             dyrinpr\            <- 必须整个复制，里面有 Roslyn 与依赖
                 Dyrinpr.dll
                 KarstYRpp.dll
@@ -289,15 +282,13 @@ Karst $version - 安装说明
                 dyrinpr.config.json
                 ...（其余是 Roslyn 与 .NET 依赖）
                 Scripts\             <- 你把 .cs 放这里
-            script-editor.html       <- 可选：外观脚本编辑器（双击打开）
             KarstScriptStudio.html   <- 可选：积木式 C# 脚本工作室（双击打开）
             docs\
 
-三、目录里那两个网页怎么用
-    * script-editor.html      —— 外观脚本（JSON）可视化编辑 + C# 空骨架生成
+三、目录里的那个网页怎么用
     * KarstScriptStudio.html  —— 积木式写 C# 脚本、并管理 Scripts 目录里的脚本
 
-    两个都直接用浏览器打开（双击）。⚠️ 不要在编辑器的"预览面板"里打开：
+    直接用浏览器打开（双击）。⚠️ 不要在编辑器的"预览面板"里打开：
     那样浏览器会把页面当作沙箱文档，目录选择器与下载都会被拒绝。
 
 四、配置
@@ -363,7 +354,7 @@ if ($Deploy) {
     if (Get-Process gamemd -ErrorAction SilentlyContinue) { Fail 'gamemd.exe is running - close the game first' }
 
     Copy-Item $dll (Join-Path $Deploy 'Karst.dll') -Force
-    foreach ($ini in 'karst.ini', 'karst.hotreload.ini', 'karst.scripts.ini') {
+    foreach ($ini in 'karst.ini', 'karst.hotreload.ini') {
         $src = Join-Path $karst $ini
         if (Test-Path $src) { Copy-Item $src (Join-Path $Deploy $ini) -Force }
     }

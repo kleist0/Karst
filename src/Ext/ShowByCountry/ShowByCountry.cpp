@@ -775,68 +775,6 @@ namespace Karst
 
 				const CCINIClass* sources[2] = { rulesINI, artINI };
 
-				// -----------------------------------------------------------
-				// Scripts first.
-				//
-				// A script that gives a building a single `look` is exactly the
-				// global ShowByArt form, so it is turned into the same kind of
-				// redirect. Scripts win over the INI: a building a script mentions
-				// is not looked up in the INI at all, which is what makes a
-				// conflict diagnosable by reading the script alone.
-				//
-				// A script that uses `byCountry` is NOT handled here - that is
-				// CountryArt's job, because one shared type cannot carry a
-				// per-owner section name.
-				// -----------------------------------------------------------
-				int fromScripts = 0;
-
-				for (const Karst::Script::AppearanceRule& rule :
-					KarstExtension::GetScriptAppearanceRules())
-				{
-					if (!rule.Look.empty())
-					{
-						SectionRedirect redirect;
-						redirect.typeId = rule.Building;
-						redirect.section = rule.Look;
-						redirect.targetType = rule.FoundationFrom;
-						redirect.keepFoundation = rule.KeepFoundation;
-						redirect.countryIndex = -1;
-
-						g_sectionRedirects.push_back(std::move(redirect));
-						++fromScripts;
-						continue;
-					}
-
-					// Per-country: leave it to CountryArt, but make sure the INI is
-					// not allowed to override it either.
-					if (!rule.ByCountry.empty())
-						++fromScripts;
-				}
-
-				if (fromScripts > 0)
-				{
-					Karst::LogInfo(L"ShowByCountry[redirect]: %d script rule(s) "
-						L"applied ahead of the INI.", fromScripts);
-				}
-
-				// True when a script already decided this building's art, either
-				// form; the INI must then leave it alone.
-				const auto handledByScript =
-					[](const char* id) -> bool
-					{
-						if (!id)
-							return false;
-
-						for (const Karst::Script::AppearanceRule& rule :
-							KarstExtension::GetScriptAppearanceRules())
-						{
-							if (::_stricmp(rule.Building.c_str(), id) == 0)
-								return true;
-						}
-
-						return false;
-					};
-
 				// Diagnostics for the whole call: how many types were scanned and how
 				// many declared ShowByArt. Without this, "the list is empty because
 				// nothing is configured" and "the list is empty because the INI was
@@ -853,11 +791,6 @@ namespace Karst
 						continue;
 
 					++scanned;
-
-					// A script already decided this building; the INI does not get
-					// a second say.
-					if (handledByScript(type->ID))
-						continue;
 
 					// The section to read is the building's own section. `Image=` is
 					// deliberately NOT used here: the configuration belongs to the

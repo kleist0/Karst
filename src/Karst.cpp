@@ -6,7 +6,6 @@
 #include <Ext/ShowByCountry/ShowByCountry.h>
 #include <Ext/BuildCost/BuildCost.h>
 #include <Ext/VirtualSeat/VirtualSeat.h>
-#include <Script/ScriptLoader.h>
 #include <Script/ClrHost.h>
 #include <Version.h>
 
@@ -25,19 +24,9 @@ bool KarstExtension::GameStarted = false;
 
 namespace
 {
-	// Sends the script loader's diagnostics to karst.log. Without this they would
-	// only reach the debugger, which is not where a user looks.
-	void ScriptLogSink(const char* message)
-	{
-		Karst::LogInfo(L"Scripts: %hs", message);
-	}
-
-	// Loads the scripts for the first time. Runs on the game thread from
+	// Starts the C# script host for the first time. Runs on the game thread from
 	// OnGameStart, i.e. after the loader lock is gone, so file I/O here is safe.
-	//
-	// The rules themselves live in the script module (Karst::Script), which also
-	// owns change detection - see ReloadScriptsIfChanged.
-	void InitScripts()
+	void InitScriptHost()
 	{
 		wchar_t path[MAX_PATH] = { 0 };
 		if (::GetModuleFileNameW(nullptr, path, _countof(path)) == 0)
@@ -49,9 +38,6 @@ namespace
 			return;
 
 		directory = directory.substr(0, slash + 1);
-
-		Karst::Script::SetLogSink(&ScriptLogSink);
-		Karst::Script::Init(directory.c_str());
 
 		// The C# script system: start the .NET runtime and load the three
 		// assemblies in <game>\dyrinpr\. Done here rather than in DllMain
@@ -71,44 +57,6 @@ Karst::Config& KarstExtension::GetConfig()
 	// initialisation-order problem with other translation units.
 	static Karst::Config instance;
 	return instance;
-}
-
-const std::vector<Karst::Script::AppearanceRule>&
-KarstExtension::GetScriptAppearanceRules()
-{
-	// Owned by the script module, which replaces the list when a script changes.
-	return Karst::Script::GetAppearanceRules();
-}
-
-bool KarstExtension::ScriptsEnabled()
-{
-	return Karst::Script::ScriptsAreEnabled();
-}
-
-bool KarstExtension::ReloadScriptsIfChanged()
-{
-	if (!Karst::Script::OnFrame())
-		return false;
-
-	// The rules changed: tell the modules that act on them to pick the new ones
-	// up. Both calls are idempotent and only write when a value actually
-	// differs, so calling them again is safe.
-	//
-	// What takes effect immediately: the ART redirection and the footprint, i.e.
-	// what the ENGINE does when it parses a type's art. What does NOT: the
-	// per-country type copies CountryArt builds, because those are made during
-	// that same parse. A new copy for an already-parsed type needs a new match -
-	// otherwise a building already on the map would keep pointing at the old
-	// copy.
-	Karst::Ext::ShowByCountry::ParseSectionRedirects();
-	Karst::Ext::ShowByCountry::ApplyFoundationFromSection("script reload");
-
-	Karst::LogInfo(L"Scripts: %u appearance rule(s) active.",
-		static_cast<unsigned>(Karst::Script::GetAppearanceRules().size()));
-	Karst::LogInfo(L"Scripts: reloaded - new look takes effect on the next ART "
-		L"parse (a newly built or newly placed building, or the next match).");
-
-	return true;
 }
 
 void KarstExtension::OnProcessAttach(HMODULE module)
@@ -170,10 +118,10 @@ void KarstExtension::OnGameStart()
 	// reports what would be built and creates nothing.
 	Karst::Ext::VirtualSeat::Init();
 
-	// User scripts. Loaded here so any problem with them is reported before the
-	// game gets far; acting on the rules happens later, at the points where the
-	// modules already decide a building's art.
-	InitScripts();
+	// C# scripts. The host is started here so any problem with the assemblies is
+	// reported before the game gets far; the scripts themselves act later, at the
+	// points where the engine already decides a unit's behaviour.
+	InitScriptHost();
 
 	// Register your own features here, e.g.
 	//   Ext::MyFeature::Init();
@@ -314,10 +262,6 @@ void KarstExtension::OnFrame()
 	// DryRun=no, attaches their seat objects. With no type declaring
 	// VirtualSeat= it is one map lookup and a dictionary miss per object.
 	Karst::Ext::VirtualSeat::OnFrame();
-
-	// User scripts: re-read them when one of them changed. Costs one directory
-	// scan per frame, and does nothing else until a timestamp moves.
-	KarstExtension::ReloadScriptsIfChanged();
 
 	// C# scripts: drive their per-frame callback.
 	//

@@ -7,11 +7,9 @@
 #  produced by a tool run.
 #
 #  Deliberately NOT ignored (they are generated but shipped on purpose, because
-#  the whole point of those pages is that a user double-clicks them):
-#     tools\script-editor\script-editor.html
+#  the whole point of that page is that a user double-clicks it):
 #     tools\script-studio\KarstScriptStudio.html
-#     script-editor.html                (a copy kept at the repo root)
-#  If you edit tools\script-*\*.template.html or blocks\*.js, re-run the
+#  If you edit tools\script-studio\*.template.html or blocks\*.js, re-run the
 #  matching build script and commit the regenerated HTML in the same change.
 # ===========================================================================
 

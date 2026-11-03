@@ -11,7 +11,6 @@ rem  options by hand every time is how the tools drifted out of sync with the
 rem  build, so they live here.
 rem
 rem  Usage:  tools\build_tools.bat              build every tool
-rem          tools\build_tools.bat json         build only check_json.exe
 rem          tools\build_tools.bat targets      build only check_targets.exe
 rem          tools\build_tools.bat snapshot     build only check_snapshot.exe
 rem          tools\build_tools.bat watch        build only check_watch.exe
@@ -42,8 +41,6 @@ set LIBS=kernel32.lib user32.lib advapi32.lib
 
 if "%~1"=="" goto all
 if /i "%~1"=="all" goto all
-if /i "%~1"=="json" goto json
-if /i "%~1"=="scripts" goto scripts
 if /i "%~1"=="targets" goto targets
 if /i "%~1"=="snapshot" goto snapshot
 if /i "%~1"=="watch" goto watch
@@ -52,22 +49,12 @@ echo Unknown target: %~1
 exit /b 1
 
 :all
-call :dojson || exit /b 1
-call :doscripts || exit /b 1
 call :dotargets || exit /b 1
 call :dosnapshot || exit /b 1
 call :dowatch || exit /b 1
 call :dotypes || exit /b 1
 echo.
 echo All tools built.
-exit /b 0
-
-:json
-call :dojson || exit /b 1
-exit /b 0
-
-:scripts
-call :doscripts || exit /b 1
 exit /b 0
 
 :targets
@@ -84,18 +71,6 @@ exit /b 0
 
 :types
 call :dotypes || exit /b 1
-exit /b 0
-
-:dojson
-echo === check_json.exe ===
-cl %FLAGS% /Fe:check_json.exe check_json.cpp "%SRC%\Script\Json.cpp" /link %LIBS%
-if errorlevel 1 exit /b 1
-exit /b 0
-
-:doscripts
-echo === check_scripts.exe ===
-cl %FLAGS% /Fe:check_scripts.exe check_scripts.cpp "%SRC%\Script\Json.cpp" "%SRC%\Script\ScriptLoader.cpp" "%SRC%\Config\INIConfigReader.cpp" /link %LIBS%
-if errorlevel 1 exit /b 1
 exit /b 0
 
 :dotargets

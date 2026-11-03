@@ -15,8 +15,8 @@ rem               ignored - no error, no log line. That is why a package made
 rem               of Karst.dll alone (what the old package.ps1 produced) is a
 rem               broken package, not a small one.
 rem
-rem    also       3 ini files (karst.ini / karst.hotreload.ini / karst.scripts.ini)
-rem               2 editor pages (KarstScriptStudio.html / script-editor.html)
+rem    also       2 ini files (karst.ini / karst.hotreload.ini)
+rem               1 editor page (KarstScriptStudio.html)
 rem               docs\  +  an install README for the player
 rem
 rem    NOT included: the game, Syringe.exe, Ares/Phobos/Kratos - the player

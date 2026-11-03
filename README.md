@@ -146,7 +146,7 @@ Files=rulesmd.ini,artmd.ini,aimd.ini
 > [`docs\二次开发须知.md`](docs/二次开发须知.md) §4。这里只给最小步骤。
 
 1. 复制 `Release\Karst.dll` 到 `gamemd.exe` 所在目录。
-2. 按需复制 `karst.ini`、`karst.hotreload.ini`、`karst.scripts.ini` 到同一目录。
+2. 按需复制 `karst.ini`、`karst.hotreload.ini` 到同一目录。
 3. **想要 C# 脚本功能，还必须把整个 `dyrinpr\` 目录复制到同一目录**
    （内容 = `refs\dyrinpr\Extension\bin\Release\*.dll` 加两个 `*.config.json`）。
    少了它，用户写的 `.cs` 会被**静默忽略**。

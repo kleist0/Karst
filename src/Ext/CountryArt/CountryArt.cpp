@@ -480,95 +480,6 @@ namespace Karst
 
 					const CCINIClass* sources[2] = { rulesINI, artINI };
 
-					// -----------------------------------------------------------
-					// Scripts first.
-					//
-					// A script that gives a building a `byCountry` map is exactly
-					// the per-owning-country form this module implements, so it
-					// becomes the same Group/Copy structure. Scripts win over the
-					// INI: a building a script mentions is not looked up in the INI
-					// at all.
-					//
-					// A script that uses a single `look` is NOT handled here - that
-					// is the global ShowByArt form, and one shared type cannot carry
-					// a per-owner section name.
-					// -----------------------------------------------------------
-					const auto scriptHandles =
-						[](const char* id) -> const Karst::Script::AppearanceRule*
-						{
-							if (!id)
-								return nullptr;
-
-							for (const Karst::Script::AppearanceRule& rule :
-								KarstExtension::GetScriptAppearanceRules())
-							{
-								if (::_stricmp(rule.Building.c_str(), id) == 0)
-									return &rule;
-							}
-
-							return nullptr;
-						};
-
-					int fromScripts = 0;
-
-					for (const Karst::Script::AppearanceRule& rule :
-						KarstExtension::GetScriptAppearanceRules())
-					{
-						if (rule.ByCountry.empty())
-							continue;   // a single look belongs to ShowByArt
-
-						Group group;
-						group.typeId = rule.Building;
-
-						for (const auto& entry : rule.ByCountry)
-						{
-							// The country has to be one the engine knows, exactly
-							// as the INI form requires: a typo must be reported
-							// rather than silently producing no art.
-							const std::string* canonical = nullptr;
-
-							for (const std::string& known : knownCountries)
-							{
-								if (::_stricmp(known.c_str(), entry.first.c_str()) == 0)
-								{
-									canonical = &known;
-									break;
-								}
-							}
-
-							if (!canonical)
-							{
-								Karst::LogInfo(L"CountryArt %hs: script says country "
-									L"'%hs' but this build has no such country - the "
-									L"entry is ignored.", rule.Building.c_str(),
-									entry.first.c_str());
-								continue;
-							}
-
-							Copy copy;
-							copy.countryId = *canonical;
-							copy.section = entry.second;
-							group.copies.push_back(copy);
-						}
-
-						if (group.copies.empty())
-						{
-							Karst::LogInfo(L"CountryArt %hs: the script rule has no "
-								L"usable country - it is ignored.",
-								rule.Building.c_str());
-							continue;
-						}
-
-						g_groups.push_back(group);
-						++fromScripts;
-					}
-
-					if (fromScripts > 0)
-					{
-						Karst::LogInfo(L"CountryArt: %d script rule(s) applied ahead "
-							L"of the INI.", fromScripts);
-					}
-
 					for (int i = 0; i < types->Count; ++i)
 					{
 						BuildingTypeClass* type = types->Items[i];
@@ -578,11 +489,6 @@ namespace Karst
 						{
 							continue;
 						}
-
-						// A script already decided this building; the INI does not
-						// get a second say.
-						if (scriptHandles(type->ID))
-							continue;
 
 						const char* section = type->ID;
 
