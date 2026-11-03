@@ -2,7 +2,7 @@
  *  Karst script studio - document validation
  * ===========================================================================
  *  Runs before the code is shown, so the page can say "this will not compile"
- *  where the user is looking, instead of leaving a CS error for karstpatcher.log.
+ *  where the user is looking, instead of leaving a CS error for dyrinpr.log.
  *
  *  Two kinds of finding:
  *    error   - the generated C# would not compile, or would reference a name

@@ -5,7 +5,7 @@
 #
 #  The studio generates C# from blocks. A block whose snippet does not compile
 #  is worse than a missing block: the user only discovers it after dropping the
-#  file into the game and reading karstpatcher.log. So every block snippet, and every
+#  file into the game and reading dyrinpr.log. So every block snippet, and every
 #  combination of blocks we ship, must be compiled BEFORE it reaches the page.
 #
 #  This compiles a .cs exactly the way the in-game Roslyn host does, using the
@@ -13,13 +13,13 @@
 #  <PatcherDir>\compiler.config.json plus CompilationManager's own defaults:
 #
 #     references : mscorlib, System, System.Core, System.Data,
-#                  KarstPatcher, KarstYRpp, KarstExtension
+#                  Dyrinpr, KarstYRpp, KarstExtension
 #     defines    : REALTIME_INI          (preprocessor_symbols)
 #     options    : /target:library /unsafe /optimize- /warn:4 /langversion:latest
 #
-#  MEASURED: compiling karstpatcher\Scripts\MyFirst.cs through this script
+#  MEASURED: compiling dyrinpr\Scripts\MyFirst.cs through this script
 #  produces a byte-identical (same length, 4608) assembly to the one the game
-#  itself produced in karstpatcher\Build\Scripts\. That is the evidence that
+#  itself produced in dyrinpr\Build\Scripts\. That is the evidence that
 #  this is a faithful stand-in, not an approximation.
 #
 #  Usage:
@@ -113,9 +113,9 @@ function Find-FrameworkDir {
     throw "the .NET Framework v4.0.30319 directory was not found."
 }
 
-function Get-KarstPatcherDir {
+function Get-DyrinprDir {
     if ($PatcherDir) { return (Resolve-Path $PatcherDir).Path }
-    $p = Join-Path $GameDir 'karstpatcher'
+    $p = Join-Path $GameDir 'dyrinpr'
     if (-not (Test-Path $p)) {
         throw "missing $p - pass -PatcherDir or -GameDir pointing at a Karst install."
     }
@@ -150,14 +150,14 @@ if ($files.Count -eq 0) {
 
 $csc = Find-Csc
 $fx  = Find-FrameworkDir
-$pd  = Get-KarstPatcherDir
+$pd  = Get-DyrinprDir
 
 $refs = @(
     (Join-Path $fx 'mscorlib.dll'),
     (Join-Path $fx 'System.dll'),
     (Join-Path $fx 'System.Core.dll'),
     (Join-Path $fx 'System.Data.dll'),
-    (Join-Path $pd 'KarstPatcher.dll'),
+    (Join-Path $pd 'Dyrinpr.dll'),
     (Join-Path $pd 'KarstYRpp.dll'),
     (Join-Path $pd 'KarstExtension.dll')
 )

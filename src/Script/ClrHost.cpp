@@ -71,7 +71,7 @@ namespace
 			"        \"System.dll\",\n"
 			"        \"System.Core.dll\",\n"
 			"        \"System.Data.dll\",\n"
-			"        \"KarstPatcher.dll\",\n"
+			"        \"Dyrinpr.dll\",\n"
 			"        \"KarstYRpp.dll\",\n"
 			"        \"KarstExtension.dll\"\n"
 			"    ],\n"
@@ -108,21 +108,21 @@ namespace
 	// they downloaded. Windows marks those files as coming from the Internet, and
 	// the CLR then REFUSES to load them:
 	//
-	//     _AppDomain::Load_2("KarstPatcher")  ->  0x80131515 (COR_E_FILELOAD)
+	//     _AppDomain::Load_2("Dyrinpr")  ->  0x80131515 (COR_E_FILELOAD)
 	//
 	// The only visible symptom is one line in karst.log:
 	//
-	//     ScriptHost: _Assembly::CreateInstance(KarstPatcher.Program) failed
+	//     ScriptHost: _Assembly::CreateInstance(Dyrinpr.Program) failed
 	//     (HRESULT 0x80131604)
 	//
-	// ...with NO karstpatcher.log at all, because Patcher.Init throws while opening
+	// ...with NO dyrinpr.log at all, because Patcher.Init throws while opening
 	// that log file, before its own try block. Measured twice on 2026-10-12: the
 	// very same files load fine the moment the mark is removed.
 	//
 	// Telling every user to "right-click, Properties, Unblock" is not a fix - it
 	// is a support burden that fails silently when skipped. Deleting the stream
 	// is harmless (it is Windows metadata, not file content) and this only ever
-	// touches DLLs inside our own KarstPatcher directory.
+	// touches DLLs inside our own Dyrinpr directory.
 	void UnblockFile(const std::wstring& path)
 	{
 		const std::wstring stream = path + L":Zone.Identifier";
@@ -237,7 +237,7 @@ namespace Karst
 
 			// The deployed host directory is lower-case on purpose: one spelling
 			// for every path on disk (see docs, section 4.3).
-			g_assemblyDirectory += L"karstpatcher";
+			g_assemblyDirectory += L"dyrinpr";
 
 			HRESULT hr = ::CLRCreateInstance(CLSID_CLRMetaHost, IID_PPV_ARGS(&g_metaHost));
 			if (FAILED(hr))
@@ -306,11 +306,11 @@ namespace Karst
 				}
 			}
 
-			// Let the CLR find KarstPatcher.dll and, through it, KarstYRpp.dll and
+			// Let the CLR find Dyrinpr.dll and, through it, KarstYRpp.dll and
 			// KarstExtension.dll. The runtime resolves a dependency next to the
 			// assembly that needs it, so one directory entry is enough.
 			{
-				const std::wstring full = g_assemblyDirectory + L"\\KarstPatcher.dll";
+				const std::wstring full = g_assemblyDirectory + L"\\Dyrinpr.dll";
 				if (::GetFileAttributesW(full.c_str()) == INVALID_FILE_ATTRIBUTES)
 				{
 					Karst::LogInfo(L"ScriptHost: '%ls' is missing - scripts are off.",
@@ -344,7 +344,7 @@ namespace Karst
 			// Load_2 resolves by assembly DISPLAY NAME, not by file path.
 			//
 			// Measured: passing the absolute path
-			// "E:\...\karstpatcher\KarstPatcher.dll" fails with 0x80131047
+			// "E:\...\dyrinpr\Dyrinpr.dll" fails with 0x80131047
 			// (COR_E_ASSEMBLYEXPECTED - "the file is not a valid assembly"),
 			// even though the file IS a valid assembly (verified with
 			// AssemblyName.GetAssemblyName). The runtime parses the argument as a
@@ -357,16 +357,16 @@ namespace Karst
 			::SetCurrentDirectoryW((g_assemblyDirectory + L"\\").c_str());
 
 			mscorlib::_Assembly* assembly = nullptr;
-			hr = domain->Load_2(::SysAllocString(L"KarstPatcher"), &assembly);
+			hr = domain->Load_2(::SysAllocString(L"Dyrinpr"), &assembly);
 			if (FAILED(hr) || !assembly)
-				return Failed("_AppDomain::Load_2(KarstPatcher)", hr);
+				return Failed("_AppDomain::Load_2(Dyrinpr)", hr);
 
-			const wchar_t* typeName = L"KarstPatcher.Program";
+			const wchar_t* typeName = L"Dyrinpr.Program";
 
 			_variant_t instance;
 			hr = assembly->CreateInstance(::SysAllocString(typeName), instance.GetAddress());
 			if (FAILED(hr))
-				return Failed("_Assembly::CreateInstance(KarstPatcher.Program)", hr);
+				return Failed("_Assembly::CreateInstance(Dyrinpr.Program)", hr);
 
 			mscorlib::_Object* object = nullptr;
 			hr = instance.punkVal

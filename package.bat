@@ -7,8 +7,8 @@ rem
 rem    C++ half   Karst.dll                                ~263 KB
 rem               the Syringe-injected extension itself.
 rem
-rem    C# half    karstpatcher\  = 22 DLLs + 2 .json       ~16.7 MB
-rem               the script HOST: the Roslyn compiler plus KarstPatcher /
+rem    C# half    dyrinpr\  = 22 DLLs + 2 .json       ~16.7 MB
+rem               the script HOST: the Roslyn compiler plus Dyrinpr /
 rem               KarstYRpp / KarstExtension and their .NET dependencies.
 rem               WITHOUT THIS FOLDER every .cs a user writes is SILENTLY
 rem               ignored - no error, no log line. That is why a package made
@@ -66,7 +66,7 @@ echo ============================================================
 echo  Karst packaging
 echo ============================================================
 echo   C++ half : Karst.dll                           ~263 KB
-echo   C#  half : karstpatcher\  22 DLLs + 2 json       ~16.7 MB
+echo   C#  half : dyrinpr\  22 DLLs + 2 json       ~16.7 MB
 echo              ^<-- the script host. Without it, any .cs a
 echo                  user writes is silently ignored.
 echo   also     : 3 ini + 2 editor pages + docs + install README
