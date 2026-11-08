@@ -2,27 +2,21 @@
 
 #include <Core/Log.h>
 #include <Core/MemorySafety.h>
-#include <Ext/EngineLayout.h>
 #include <Karst.h>
 
-// GameClasses.h pulls in the engine classes in dependency order; including
-// BuildingClass.h on its own leaves FootClass incomplete and the cast helpers do
-// not compile.
+// GameClasses.h pulls the engine classes in dependency order; including
+// BuildingTypeClass.h on its own leaves base classes incomplete.
 #include <GameClasses.h>
 #include <ObjectClass.h>
 #include <TechnoClass.h>
 #include <BuildingTypeClass.h>
 #include <HouseTypeClass.h>
 #include <CCINIClass.h>
-#include <FileSystem.h>
-#include <FileFormats/SHP.h>
-#include <Memory.h>
-#include <AnimClass.h>
-#include <AnimTypeClass.h>
 
 #include <cstdio>
 #include <cstring>
-#include <cstdlib>
+#include <string>
+#include <vector>
 
 namespace Karst
 {
@@ -48,10 +42,6 @@ namespace Karst
 				// RedirectSectionBeforeFullParse - the only entry point that runs
 				// early enough for the section name to still matter).
 				bool g_redirectsParsed = false;
-
-				// Bounded diagnostics for the redirect gate, so a mis-ordered latch is
-				// visible in the log instead of silently disabling ShowByArt.
-				int g_redirectGateReports = 0;
 
 				// Keys that redirect a building to another building's art - and,
 				// because a footprint is a rules matter, to that building's
@@ -161,73 +151,7 @@ namespace Karst
 
 					return false;
 				}
-
-				// Is either spelling of the key present, even if its value is blank?
-				bool KeyPresent(CCINIClass* ini, const char* section,
-					const char* const* keys, size_t keyCount)
-				{
-					char buffer[VALUE_BUFFER_SIZE];
-
-					for (size_t i = 0; i < keyCount; ++i)
-					{
-						buffer[0] = '\0';
-						if (ini->ReadString(section, keys[i], "", buffer, sizeof(buffer)) > 0)
-							return true;
-					}
-
-					return false;
-				}
-
-
-				std::string JoinNames(const std::vector<std::string>& names)
-				{
-					std::string joined;
-					for (size_t i = 0; i < names.size(); ++i)
-					{
-						if (i)
-							joined += ", ";
-						joined += names[i];
-					}
-					return joined;
-				}
 			}
-
-
-
-
-
-			namespace
-			{
-
-				std::wstring ToWide(const std::string& text)
-				{
-					if (text.empty())
-						return std::wstring();
-
-					const int length = ::MultiByteToWideChar(CP_UTF8, 0,
-						text.c_str(), static_cast<int>(text.size()), nullptr, 0);
-					if (length <= 0)
-						return std::wstring();
-
-					std::wstring wide(static_cast<size_t>(length), L'\0');
-					::MultiByteToWideChar(CP_UTF8, 0, text.c_str(),
-						static_cast<int>(text.size()), &wide[0], length);
-					return wide;
-				}
-
-				std::wstring JoinProblems(const std::vector<std::string>& problems)
-				{
-					std::wstring joined;
-					for (size_t i = 0; i < problems.size(); ++i)
-					{
-						joined += L"- ";
-						joined += ToWide(problems[i]);
-						joined += L"\n";
-					}
-					return joined;
-				}
-			}
-
 
 			bool IsInitialized()
 			{
@@ -239,12 +163,9 @@ namespace Karst
 			// executable entry point (0x7CD810), far too early - the type list does
 			// not exist yet - so returning false tells the caller to retry.
 			//
-			// This used to parse the ShowByCountries / ShowBySHP rules and build a
-			// RuleSet. All of that is removed with the per-country feature. The
-			// feature now reads ShowByArt, and it does so in
-			// RedirectSectionBeforeFullParse() - the one entry point that actually
-			// runs during map load and therefore the only place where the section
-			// name can still influence what the engine parses.
+			// Nothing is parsed here: the redirect needs the rules INI, which only
+			// exists once the engine starts parsing building ART. That is
+			// RedirectSectionBeforeFullParse(), and it is where the list is read.
 			bool Init()
 			{
 				if (g_initialized)
@@ -263,70 +184,12 @@ namespace Karst
 				return true;
 			}
 
-
-			// -----------------------------------------------------------------
-			// Runtime
-			// -----------------------------------------------------------------
-			//
-			// The image is applied by walking BuildingClass::Array from the main
-			// loop and pointing each building type at the SHP its owner's country
-			// should use. No hook inside the draw path is involved, which matters:
-			// two candidate draw-path hook addresses were tried in a live game and
-			// neither routine ran for a deployed building. The main loop hook is the
-			// one that is known to work.
-			//
-			// Consequence to be aware of: ImageFile/Image live on BuildingTypeClass,
-			// which is shared by every instance of that type. If two countries in
-			// one match own the same building type, the last one processed wins for
-			// both. In the common case - each country builds its own structures -
-			// that is invisible.
-
 			namespace
 			{
-				// Original image name per building type, so the value can be restored
-				// if the building's country changes or the rule stops applying.
-				struct TypeImageState
-				{
-					int TypeIndex = -1;
-					char OriginalImageFile[0x19] = { 0 };
-					const char* AppliedShp = nullptr;
-
-					// The Image pointer this module assigned, and how many times the
-					// engine has been seen replacing it. Measuring this distinguishes
-					// "the engine ignores Image" from "the engine overwrites it" - the
-					// two possible reasons the picture never changes on screen.
-					void* AppliedImage = nullptr;
-					int EngineOverwrites = 0;
-				};
-
-				std::vector<TypeImageState> g_typeStates;
-
-
-				// Building type indices already reported, one log line per type.
-				std::vector<int> g_loggedTypes;
-
-				// How many "which SHP does the engine actually use" dumps have
-				// been written. The dump is the whole point of this revision: it
-				// shows every image-bearing field of the type and what the engine's
-				// own GetImage() returns, so "the picture did not change" can be
-				// attributed to a named field instead of guessed at.
-				int g_imageDumpsLeft = 6;
-
-				// Reads a SHP struct's header and filename safely.
-				//
-				// Every field of ObjectTypeClass is reachable only by offset, and
-				// a wrong offset yields a wild pointer. The header is therefore
-				// read one member at a time through the readable-range check
-				// instead of by dereferencing a struct whose layout is only
-				// assumed. `filename` is optional: a SHPFile has no name, only a
-				// SHPReference does.
-				// Narrows->wide for diagnostics.
-				//
-				// Explicitly converting beats `%hs` here: every message is formatted
-				// with the wide `_vsnwprintf_s`, and a narrow string handed to it that
-				// way was observed to come out as mojibake - "ImageFile='NACNST'"
-				// printed as CJK characters. Formatting the narrow text first and
-				// passing the result with `%ls` is unambiguous.
+				// Narrows->wide for the log. The narrow text is always converted here
+				// and passed with `%ls`: every message is formatted with the wide
+				// `_vsnwprintf_s`, and a narrow string handed to it directly came out
+				// as mojibake ("ImageFile='NACNST'" printed as CJK characters).
 				std::wstring Widen(const char* text)
 				{
 					if (!text || !text[0])
@@ -340,206 +203,7 @@ namespace Karst
 					::MultiByteToWideChar(CP_ACP, 0, text, -1, &wide[0], length);
 					return wide;
 				}
-
-				void DescribeShp(const void* shp, wchar_t* out, size_t outCount)
-				{
-					if (outCount == 0)
-						return;
-
-					out[0] = L'\0';
-
-					if (!shp || !Karst::MemorySafety::IsReadable(shp))
-					{
-						::swprintf_s(out, outCount, L"(none)");
-						return;
-					}
-
-					// SHPStruct: WORD Type; short Width; short Height; short Frames;
-					const WORD* header = static_cast<const WORD*>(shp);
-					if (!Karst::MemorySafety::IsReadable(header, sizeof(WORD) * 4))
-					{
-						::swprintf_s(out, outCount, L"%p (header unreadable)", shp);
-						return;
-					}
-
-					const WORD type = header[0];
-					const short width = *reinterpret_cast<const short*>(header + 1);
-					const short height = *reinterpret_cast<const short*>(header + 2);
-					const short frames = *reinterpret_cast<const short*>(header + 3);
-
-					// A SHPReference (Type == 0xFFFF) keeps its filename at +0x08.
-					if (type == 0xFFFF)
-					{
-						const DWORD* nameSlot = reinterpret_cast<const DWORD*>(
-							static_cast<const BYTE*>(shp) + 8);
-
-						// Copy the name with a hard bound instead of printing the
-						// engine's pointer directly: the only thing proven about it is
-						// that its first byte is readable, and `%hs` would happily run
-						// off the end of a string that is not terminated. A diagnostic
-						// must not be able to crash the match it is measuring.
-						char name[128] = { 0 };
-						bool haveName = false;
-
-						if (Karst::MemorySafety::IsReadable(nameSlot))
-						{
-							const char* source = reinterpret_cast<const char*>(*nameSlot);
-							if (source && Karst::MemorySafety::IsReadable(source, 1))
-							{
-								haveName = true;
-								for (size_t i = 0; i + 1 < KARST_COUNTOF(name); ++i)
-								{
-									if (!Karst::MemorySafety::IsReadable(source + i, 1))
-										break;
-									name[i] = source[i];
-									if (name[i] == '\0')
-										break;
-								}
-								name[KARST_COUNTOF(name) - 1] = '\0';
-							}
-						}
-
-						::swprintf_s(out, outCount, L"%p ref type=0x%04X %dx%d frames=%d file='%ls'",
-							shp, type, width, height, frames,
-							Widen(haveName ? name : "?").c_str());
-					}
-					else
-					{
-						::swprintf_s(out, outCount, L"%p data type=0x%04X %dx%d frames=%d",
-							shp, type, width, height, frames);
-					}
-				}
-
-				// Calls the engine's ART-section reload, isolating SEH from any
-				// function that owns C++ objects (MSVC C2712). Returns false when the
-				// engine raised - the caller only reports that.
-				bool CallLoadArtSection(void* type, DWORD theater)
-				{
-					typedef void(__thiscall* LoadArtFn)(void* self, DWORD theater);
-					LoadArtFn loadArt = reinterpret_cast<LoadArtFn>(
-						EngineLayout::LoadArtSectionFunction);
-
-					if (!loadArt)
-						return false;
-
-					__try
-					{
-						loadArt(type, theater);
-					}
-					__except (EXCEPTION_EXECUTE_HANDLER)
-					{
-						return false;
-					}
-
-					return true;
-				}
-
-
-
-				// One-line-per-field census of every SHP slot on a building type,
-				// plus the answer GetImage() itself gives.
-				//
-				// This is what decides the open question in the handoff - "which
-				// field does the draw path read". Instead of guessing a field, the
-				// engine's own virtual GetImage() (BuildingClass vtable slot 30 ->
-				// BuildingTypeClass 0x7E4570+0x9C -> 0x45F040) is called and its
-				// result printed next to the fields it could plausibly come from.
-				// Defined below; DumpTypeImages calls it to list the name strings.
-				void DumpAnimNameTable(BuildingTypeClass* type, const char* when);
-
-
-
-
-
-
-
-				// Country pointer offset, once discovered.
-				// Owning-house offset and country offset, both discovered at runtime.
-				int g_ownerOffset = 0;
-				int g_countryOffset = 0;
-				bool g_ownerOffsetReported = false;
-				int g_ownerCandidatesLogged = 0;
-				int g_ownerSearchAttempts = 0;
-
-				// How many ART-load substitutions have been logged.
-				int g_artHooksApplied = 0;
-				int g_copiesPicked = 0;
-				int g_deployTimingReports = 0;
-				int g_createHookFires = 0;
-				int g_allocArgsReports = 0;
-				int g_clonePicksReported = 0;
-				int g_cloneIdxReports = 0;
-				int g_buildingTypeSwaps = 0;
-
-				// How many buildings were created from a per-country type copy
-				// (goal B). Bounded so the log stays readable.
-				int g_ownerTypeSwaps = 0;
-
-				// How many substitutions faulted inside an engine lookup and were
-				// therefore skipped. A non-zero value here means SEH caught something
-				// that would otherwise have been a fatal error.
-				int g_ownerTypeFailures = 0;
-
-				// The ART loader runs during very early startup as well, before
-				// BuildingTypeClass::Array exists. Touching the array at that point
-				// crashed the game on the loading screen. The hook therefore stays
-				// inert until a match is actually running.
-				bool g_GameRunning = false;
-				bool g_countryOffsetReported = false;
-				bool g_diagnosticsReported = false;
-
-				// How many detailed sweeps have been logged, so the log stays short.
-				int g_sweepsReported = 0;
-
-				// The one-off list census is emitted once per process.
-				bool g_arrayCensusDone = false;
-
-				// Sweep bookkeeping: how many ran, when the first one ran, how many
-				// buildings the last one saw, and whether the give-up fired.
-				unsigned g_sweeps = 0;
-				DWORD g_firstSweepTick = 0;
-				int g_lastBuildingCount = 0;
-				bool g_gaveUp = false;
-
-				// Concatenated names of every building type seen so far, used to
-				// detect first appearances. A live match only produces the player's
-				// own buildings well after the map scenery, so "log on change" is
-				// what catches them.
-				std::string g_seenTypeNames;
-
-				// How many selected-object traces are still allowed.
-				int g_selectedTracesLeft = 12;
-
-
-
-				unsigned DiscoverCountryOffset(const void* owner);
-
-
-
-
-
-
-
-
 			}
-
-
-
-
-
-			// (The old 0x45197B probe was removed: it never fired for GACNST.)
-
-
-
-			// Defined below, next to the draw-time rule that also uses it.
-			bool CountryListContains(const char* list, int countryIndex);
-
-
-
-
-
-
-
 
 			// -------------------------------------------------------------------
 			// Section redirect table  (single source of truth)
@@ -572,34 +236,15 @@ namespace Karst
 			// (GAWEAT, because GAWETH is not in BuildingTypeClass::Array at all).
 			//
 			// `targetType` may be empty, meaning "same as section".
+			//
+			// (This struct once also carried `countryIndex` and `keepFoundation`.
+			// Both are gone: the per-country form is Ext\CountryArt now, and the
+			// script bridge that could ask for "the look only" was removed.)
 			struct SectionRedirect
 			{
 				std::string typeId;      // the building being changed, e.g. "NAPOWR"
 				std::string section;     // its ART section, e.g. "GAPOWR"
 				std::string targetType;  // its type ID if that differs, else ""
-
-				// A script asked for the look ONLY, leaving the footprint alone
-				// ("foundationFrom": "self"). The INI form has no way to say this,
-				// so it is false for every INI rule.
-				//
-				// Why it exists: following the target's footprint is usually what
-				// you want, but the target's Foundation can have the same area and
-				// a different shape (3x2 vs 2x3), and a script that only wanted a
-				// different picture should not silently change where the building
-				// may be placed.
-				bool keepFoundation = false;
-
-				// Which owning country this entry applies to.
-				//
-				//   -1  -> applies to every owner (the global `ShowByArt` form)
-				//   >=0 -> applies only to buildings whose owner has this country
-				//
-				// The >=0 form is what `ShowByCountries`/`ShowBySHP` produce. It
-				// cannot be applied by rewriting the shared type's ImageFile - the
-				// type is shared by every player of that building - so those entries
-				// are realised as per-country type copies and selected per building.
-				int countryIndex = -1;
-				std::string countryName;  // for logging only
 			};
 
 			// The redirect list, loaded from the INI at match start.
@@ -620,6 +265,87 @@ namespace Karst
 
 			// A stable view of the same entries for logging.
 			int g_redirectCount = 0;
+
+			// -------------------------------------------------------------------
+			// Per-match footprint copy
+			// -------------------------------------------------------------------
+			//
+			// The engine rebuilds every building type object when a new match starts
+			// (measured for CountryArt: the same GACNST lives at 0x16A370D0 in match 1
+			// and 0x16E33040 in match 2). Everything written onto a type therefore
+			// belongs to ONE match, so the footprint copy has to be re-run for each of
+			// them. The ART redirect does not: it happens again on every parse.
+			//
+			// Applying the copy once per PROCESS - what this module used to do - left
+			// the second match onwards with the building's own Foundation: the art was
+			// right and the ground it claimed was not, which is the least visible
+			// failure this feature can have.
+
+			namespace
+			{
+				bool g_GameRunning = false;
+
+				// Identity of the CURRENT building-type list. A change means the engine
+				// threw the previous type objects away, i.e. a new match.
+				uintptr_t g_typeListSignature = 0;
+
+				// How many more frames the footprint copy may be retried. The new type
+				// objects are parsed during the load, and the imitated type's Foundation
+				// index is only final once ITS parse has run, so a single attempt may
+				// legitimately see "not redirected yet".
+				int g_foundationPendingFrames = 0;
+
+				// How many "not redirected yet" lines may still be logged for the current
+				// list, so the retry loop cannot flood karst.log.
+				int g_foundationSkipLogs = 0;
+
+				// Hashes the two ends of the array rather than walking it: both move
+				// when the engine rebuilds the list, and this runs once per frame.
+				uintptr_t TypeListSignature()
+				{
+					auto* types = Karst::MemorySafety::SafeReadSlot<
+						DynamicVectorClass<BuildingTypeClass*>*>(
+							&BuildingTypeClass::Array);
+
+					if (!types || types->Count <= 0)
+						return 0;
+
+					const uintptr_t first = reinterpret_cast<uintptr_t>(types->Items[0]);
+					const uintptr_t last = reinterpret_cast<uintptr_t>(
+						types->Items[types->Count - 1]);
+
+					return first ^ (last << 1) ^ (static_cast<uintptr_t>(types->Count) << 3);
+				}
+
+				void EnsureFoundationForTypeList()
+				{
+					if (g_sectionRedirects.empty())
+						return;
+
+					const uintptr_t signature = TypeListSignature();
+
+					if (signature == 0)
+						return;
+
+					if (signature != g_typeListSignature)
+					{
+						g_typeListSignature = signature;
+						g_foundationPendingFrames = 300;   // ~5 s at 60 fps
+						g_foundationSkipLogs = 5;
+
+						Karst::LogDebug(L"ShowByCountry[foundation]: the engine published "
+							L"a new building-type list - re-applying the footprint for this "
+							L"match.");
+					}
+
+					if (g_foundationPendingFrames <= 0)
+						return;
+
+					--g_foundationPendingFrames;
+
+					ApplyFoundationFromSection("new type list");
+				}
+			}
 
 			// Declared here, in the SAME scope as its definition, because
 			// RedirectSectionBeforeFullParse() (defined just below) is the function
@@ -704,14 +430,6 @@ namespace Karst
 
 				for (const SectionRedirect& redirect : g_sectionRedirects)
 				{
-					// Per-country entries are NOT applied to the shared type: the
-					// type is used by every player of that building, so pointing it
-					// at one country's art would change it for everyone. Those are
-					// realised as per-country type copies instead (CreateCountryCopies
-					// + the PickTypeForOwner hook).
-					if (redirect.countryIndex >= 0)
-						continue;
-
 					if (_stricmp(id, redirect.typeId.c_str()) != 0)
 						continue;
 
@@ -745,13 +463,12 @@ namespace Karst
 			//     ShowByArtType=GAWEAT        ; ... and the registered type, when they
 			//                                 ;     differ (GAWETH exists only in artmd)
 			//
-			// Read from rulesmd.ini first, then artmd.ini, mirroring how the existing
-			// ShowByCountries/ShowBySHP keys are looked up: a mod author writes
+			// Read from rulesmd.ini first, then artmd.ini: a mod author writes
 			// building keys in the building's rules section, but art-side placement is
 			// accepted too.
 			//
-			// Called once when the match starts. Safe to call again (it rebuilds the
-			// list from scratch).
+			// Called once per process, and again whenever the redirect gate has to
+			// retry. Safe to call repeatedly (it rebuilds the list from scratch).
 			void ParseSectionRedirects()
 			{
 				g_sectionRedirects.clear();
@@ -834,27 +551,9 @@ namespace Karst
 						// supplies the type explicitly. Otherwise they are the same name
 						// and the footprint can be read straight from `section`.
 						redirect.targetType = typeName;
-						redirect.countryIndex = -1;
 
 						g_sectionRedirects.push_back(std::move(redirect));
 					}
-
-					// The per-country form (ShowByCountries / ShowBySHP) used to be
-					// read here: it produced one entry per (building, country) pair,
-					// which then had to be realised as per-country type clones because
-					// the shared type cannot carry a per-owner section name.
-					//
-					// That whole path is REMOVED. The clones were built as
-					// `memcpy(source) + ImageFile=<target section>`, so they paired the
-					// target section's art with the SOURCE type's animation names -
-					// which is what made the activity animations wrong - and the two
-					// runtime mechanisms that consumed them (a construction-time Type
-					// swap and a per-frame draw-time swap) duplicated each other.
-					//
-					// What remains is the global ShowByArt form above: rename the
-					// type's ART section before the engine parses it, so the engine
-					// fills every key - image, animations and all - from the target
-					// section. No clone, no draw hook, nothing per-owner.
 				}
 
 				g_redirectCount = static_cast<int>(g_sectionRedirects.size());
@@ -947,21 +646,6 @@ namespace Karst
 
 				for (const SectionRedirect& redirect : g_sectionRedirects)
 				{
-					// Per-country entries get their footprint from the same copy that
-					// carries their art, i.e. on the per-country type copy, not here.
-					if (redirect.countryIndex >= 0)
-						continue;
-
-					// A script asked for the look only; the ART redirect above still
-					// applies, the building just keeps its own placement.
-					if (redirect.keepFoundation)
-					{
-						Karst::LogInfo(L"ShowByCountry[foundation]: %ls keeps its own "
-							L"footprint (script asked for the look only).",
-							Widen(redirect.typeId.c_str()).c_str());
-						continue;
-					}
-
 					BuildingTypeClass* source = nullptr;
 					BuildingTypeClass* target = nullptr;
 
@@ -990,11 +674,17 @@ namespace Karst
 
 					if (!source || !target)
 					{
-						Karst::LogDebug(L"ShowByCountry[foundation]: %ls -> %ls: "
-							L"type not found (source=%ls target=%ls).",
-							Widen(redirect.typeId.c_str()).c_str(),
-							Widen(redirect.section.c_str()).c_str(),
-							source ? L"yes" : L"no", target ? L"yes" : L"no");
+						if (g_foundationSkipLogs > 0)
+						{
+							--g_foundationSkipLogs;
+
+							Karst::LogDebug(L"ShowByCountry[foundation]: %ls -> %ls: "
+								L"type not found (source=%ls target=%ls).",
+								Widen(redirect.typeId.c_str()).c_str(),
+								Widen(redirect.section.c_str()).c_str(),
+								source ? L"yes" : L"no", target ? L"yes" : L"no");
+						}
+
 						continue;
 					}
 
@@ -1003,13 +693,23 @@ namespace Karst
 
 					// Only redirect types whose ART actually points at the target,
 					// i.e. the ones this feature changed. Anything else is left alone.
+					//
+					// This is the branch the per-frame retry lands in while the engine is
+					// still loading, so it is logged a bounded number of times per type
+					// list instead of once per frame.
 					if (_stricmp(source->ImageFile, redirect.section.c_str()) != 0)
 					{
-						Karst::LogDebug(L"ShowByCountry[foundation]: %ls is not "
-							L"redirected to %ls yet (ImageFile='%ls') - skipped.",
-							Widen(redirect.typeId.c_str()).c_str(),
-							Widen(redirect.section.c_str()).c_str(),
-							Widen(source->ImageFile).c_str());
+						if (g_foundationSkipLogs > 0)
+						{
+							--g_foundationSkipLogs;
+
+							Karst::LogDebug(L"ShowByCountry[foundation]: %ls is not "
+								L"redirected to %ls yet (ImageFile='%ls') - skipped.",
+								Widen(redirect.typeId.c_str()).c_str(),
+								Widen(redirect.section.c_str()).c_str(),
+								Widen(source->ImageFile).c_str());
+						}
+
 						continue;
 					}
 
@@ -1090,37 +790,13 @@ namespace Karst
 
 
 
-			// Called from the hook on the engine's ART-section loader (0x45F230),
-			// with `pType` being the BuildingTypeClass about to be loaded.
+			// Marks the moment the feature may act, and keeps the footprint copy in
+			// step with the engine's CURRENT type list - i.e. with the current match.
 			//
-			// This is the only point where the section name cannot be undone: the
-			// loader reads `Image=` and, when that key is absent, resets ImageFile to
-			// the type's default name. Writing it from the main loop was therefore
-			// overwritten on the next load, which is why the building kept drawing
-			// its original animations even though the log said the rule was applied.
-			//
-			// The owning country of a specific building is not available here - the
-			// loader works on the shared type - so the country comes from the local
-			// player. Every building of that type then uses the local player's
-			// appearance, which is consistent from that player's point of view.
-			// -------------------------------------------------------------------
-			// Country-specific type copies  (goal B)
-			// -------------------------------------------------------------------
-			//
-			// The engine resolves a building's look from its BuildingTypeClass, and
-			// that class is SHARED by every player of that type. There is therefore
-			// no place on it to store "this country looks different": whatever is
-			// written there applies to everyone.
-			//
-			// The original game solves country differences by having separate types
-			// (GACNST / NACNST / YACNST). This module does the same thing at runtime:
-			// for each (type, country) pair it clones the type, points the clone at
-			// the country's ART section, and hooks BuildingTypeClass::CreateObject so
-			// that a building is created from the clone matching its owner's country.
-			//
-			// The clone is what makes the feature work: its Image and its animation
-			// names both come from the country's own ART section, and being a
-			// distinct object, it cannot be overwritten by another country.
+			// Called every frame from the main loop. It used to do two more things,
+			// both removed with the per-country feature: bind the LOCAL player's art
+			// to every configured type (plan A), and build per-country type clones
+			// (plan B). The global ShowByArt path needs neither.
 
 
 
@@ -1129,35 +805,15 @@ namespace Karst
 
 
 
-			// BuildingTypeClass::Array is static DynamicVectorClass<...>* const.
-			// Naming the concrete type once keeps every access below readable, and
-			// avoids the template-deduction trouble that &Array (type T* const*)
-			// causes for the generic slot reader.
-			typedef DynamicVectorClass<BuildingTypeClass*> TypeList;
-			typedef TypeList* TypeListPtr;
-
-
-			// Marks the moment the feature may act, and applies the footprint copy.
-			//
-			// This used to do two more things, both removed with the per-country
-			// feature: ApplyLocalCountryArt() bound the LOCAL player's art to every
-			// configured type (plan A), and CreateCountryCopies() built the
-			// per-country type clones (plan B). Neither is needed now: the global
-			// ShowByArt path renames each type's ART section before the engine parses
-			// it, which needs no clone and no draw hook.
 			void MarkGameRunning()
 			{
-				if (g_GameRunning)
-					return;
+				if (!g_GameRunning)
+				{
+					g_GameRunning = true;
+					Karst::LogDebug(L"ShowByCountry: feature is active.");
+				}
 
-				g_GameRunning = true;
-				Karst::LogDebug(L"ShowByCountry: feature is active.");
-
-				// Give the redirected types the footprint of the building they
-				// imitate. Done here rather than at parse time because rulesmd.ini
-				// (where Foundation lives) is loaded around the same time as the ART
-				// sections, and this is the first point where both are present.
-				ApplyFoundationFromSection("match start");
+				EnsureFoundationForTypeList();
 			}
 
 
@@ -1180,6 +836,10 @@ namespace Karst
 			//
 			// ECX is the side index the caller passed.
 			//
+			// Logged at DEBUG: this answers "did the engine take this path at all",
+			// which is only worth asking while diagnosing the per-country MIX
+			// feature. At the default LogLevel it costs nothing.
+			//
 			// WRITES NOTHING.
 			void ProbeSidebarMixEntry(unsigned long sideIndex)
 			{
@@ -1189,7 +849,7 @@ namespace Karst
 
 				--reportsLeft;
 
-				Karst::LogInfo(L"ShowByCountry[mixentry] 0x534FA0 entered: "
+				Karst::LogDebug(L"ShowByCountry[mixentry] 0x534FA0 entered: "
 					L"sideIndex(ECX)=%u", sideIndex);
 			}
 

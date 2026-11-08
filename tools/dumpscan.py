@@ -14,12 +14,16 @@ Usage:
     python dumpscan.py strrefs Image
 """
 
+import os
 import struct
 import sys
 
 from capstone import Cs, CS_ARCH_X86, CS_MODE_32, CS_OP_IMM, CS_OP_MEM
 
-GAMEMD = r"E:\_game\RA2\Yuri'sRevenge\gamemd.exe"
+# Where gamemd.exe lives. The default is this project's own test install; set
+# KARST_GAMEMD to point at another one (hookcheck.py and every other tool that
+# imports this module follow it, so a differently-installed game needs no edit).
+GAMEMD = os.environ.get("KARST_GAMEMD") or r"E:\_game\RA2\Yuri'sRevenge\gamemd.exe"
 
 
 class Pe:

@@ -239,7 +239,8 @@ void KarstExtension::OnFrame()
 
 	if (Karst::Ext::ShowByCountry::IsInitialized())
 	{
-		// Marks the feature active and applies the footprint copy once. The ART
+		// Marks the feature active, and re-applies the footprint copy whenever the
+		// engine publishes a new building-type list (once per match). The ART
 		// redirect itself happens earlier, in the engine's ART parser hook - that
 		// is the only moment at which changing a type's section name can still
 		// influence what gets parsed.
@@ -247,7 +248,7 @@ void KarstExtension::OnFrame()
 		// There is no per-frame sweep any more. The sweep existed to walk every
 		// building and apply a per-country rule to the ones whose owner matched;
 		// with the per-country feature removed, nothing needs to be examined per
-		// building, so no frame time is spent on it.
+		// building - one type-list comparison per frame is all that is left.
 		Karst::Ext::ShowByCountry::MarkGameRunning();
 	}
 

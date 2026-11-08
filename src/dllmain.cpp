@@ -106,290 +106,102 @@ DEFINE_HOOK(55D360, Karst_MainLoop, 5)
 	return 0;
 }
 
-// Where a building actually comes from - all four sites, at once.
+// ---------------------------------------------------------------------------
+// The four BuildingClass allocation sites (0x44FAF8 / 0x44FD6E / 0x45E806 /
+// 0x45E883) used to be hooked here, each only writing a "site N reached" line,
+// to find out which path creates a deployed construction yard.
 //
-// The executable allocates the 0x720-byte BuildingClass in exactly four places,
-// each followed by a call to its constructor (0x43B740):
-//
-//   0x44FAF8 -> 0x44FB22      measured: 25 hits, all of them the map's preplaced
-//   0x44FD6E -> 0x44FD8A      scenery. A deployed construction yard did NOT come
-//   0x45E806 -> 0x45E81F      through here, so it must use one of the others.
-//   0x45E883 -> 0x45E89C
-//
-// All four now report, so one run with an actual deploy identifies the path.
-// Each hook only logs; nothing is modified.
-DEFINE_HOOK(44FAF8, karst_ShowByCountry_Alloc1, 5)
-{
-	Karst::LogInfo(L"ShowByCountry[alloc]: site 1 (0x44FAF8) reached.");
-	return 0;
-}
-
-DEFINE_HOOK(44FD6E, karst_ShowByCountry_Alloc2, 5)
-{
-	Karst::LogInfo(L"ShowByCountry[alloc]: site 2 (0x44FD6E) reached.");
-	return 0;
-}
-
-DEFINE_HOOK(45E806, karst_ShowByCountry_Alloc3, 5)
-{
-	Karst::LogInfo(L"ShowByCountry[alloc]: site 3 (0x45E806) reached.");
-	return 0;
-}
-
-DEFINE_HOOK(45E883, karst_ShowByCountry_Alloc4, 5)
-{
-	Karst::LogInfo(L"ShowByCountry[alloc]: site 4 (0x45E883) reached.");
-	return 0;
-}
+// REMOVED: that question is settled, and the hooks cost four of Syringe's slots
+// plus one log line per BuildingClass the engine ever allocates. ShowByArt does
+// not need to know the creation path - it acts on the TYPE, before the engine
+// parses its ART section (see the 0x45FE50 hook below).
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// ShowByCountries / ShowBySHP
+// ShowByArt  (Ext\ShowByCountry)
 // ---------------------------------------------------------------------------
 //
-// The image is applied by hooking the routine the engine uses to (re)load a
-// building type's ART section, 0x45F230.
-//
-// Why here rather than from the main loop:
-//
-//   0x45F230 reads the `Image=` key and, when it is absent, resets ImageFile to
-//   the type's default section name before loading. Applying the rule from the
-//   main loop therefore got overwritten on the next ART load - the log showed
-//   "already points at NACNST" while the building still drew gacnst_a. Writing
-//   ImageFile immediately *before* the engine reads it is the only point where
-//   the value cannot be undone.
-//
-// The hook runs on the type (ECX = BuildingTypeClass*). It looks up the rule by
-// the type's index, resolves the owning country, and writes the target section
-// name into ImageFile. Everything else - main image and every animated piece -
-// then comes from that section because the engine is about to load it.
+// The feature acts on the type, from the full ART parser's entry (0x45FE50,
+// hooked further down). Hooking the partial ART loader 0x45F230 was tried and
+// removed: it reads `Image=` and resets ImageFile to the type's default when the
+// key is absent, so a value written earlier gets overwritten on the next load -
+// the log said "already points at NACNST" while the building still drew
+// gacnst_a. Writing ImageFile before the engine READS it is the only point where
+// the value cannot be undone.
 
 
 
 
 
 // ---------------------------------------------------------------------------
-// Creation-time observation  (read-only)
+// Probes that were tried here and are NOT installed
 // ---------------------------------------------------------------------------
 //
-// WHY THESE EXIST
+// Kept as a short list so nobody pays for the same crash twice:
 //
-// The country sync changes animation *names* on BuildingTypeClass, and the log
-// proves it works: after a sync the type reads 'NACNST_A' / 'NACNST_C' /
-// 'NACNST_B'. Yet a live match drew the old animations. A building's animation
-// objects live on the *instance* (array at +0x55C) and are created from the type
-// when the building is constructed, so the open question is:
+//   0x451750  the engine's per-slot "play anim" helper. A hook of size 6 cut
+//             into `push esi` (the prologue boundary is 1 + 4 = 5) and the game
+//             died with C0000005 at a garbage EIP. Ares/Phobos may also own this
+//             address, which would make it unusable regardless.
+//   0x44FB27  the first instruction after a BuildingClass constructor returns.
+//             Also crashed.
 //
-//     at the moment a building is created, does its type already carry the
-//     country's names, or the original GACNST ones?
-//
-// If it already carries the country's names, the sync only has to run earlier
-// (or the engine rebuilds the instance objects on its own). If it still carries
-// GACNST's, something re-reads the section after the sync.
-//
-// These hooks only read and log. Nothing is modified - an earlier attempt to
-// rebuild the instance anims crashed inside the Ares/Phobos module, so the next
-// step must be decided from evidence rather than by trying another write.
-
-// The engine's own "play anim slot N of this building" helper, 0x451750.
-//
-// This is the cleanest possible probe of the type-side field mapping, because
-// the engine computes the address itself:
-//
-//   0x00451765  mov edi, [esi + 0x520]         ; Type
-//   0x00451772  lea edx, [edi + edx*4 + 0xF5C] ; Type + 0xF5C + slot*0x3C
-//
-// So logging `slot` and the type pointer here says exactly which member the
-// engine would read for each animation slot - no guessing about array bases.
-// The type-side names have already been synced by the time this runs, so the
-// logged address also shows whether the engine sees the country's name.
-// ---------------------------------------------------------------------------
-// Creation-time observation  (read-only)  --  DISABLED
-// ---------------------------------------------------------------------------
-//
-// TWO HOOKS WERE TRIED HERE AND BOTH CRASHED THE GAME. They are deliberately not
-// installed, and the reasoning is kept so they are not reattempted blindly:
-//
-//   0x451750  The engine's per-slot "play anim" helper. A hook with size 6 was
-//             installed; the game died with C0000005 at a garbage EIP. Syringe
-//             trampolines require the size to cover WHOLE instructions, and the
-//             prologue boundary is 1 (`push ebx`) + 4 (`mov ebx,[esp+0x10]`) = 5,
-//             so 6 cut into `push esi`. Whether that alone explains the crash is
-//             unproven - Ares/Phobos may also hook this address, which would make
-//             it unusable for us regardless.
-//
-//   0x44FB27  Just after a BuildingClass constructor returns. Also crashed.
-//
-// The lesson is recorded in HANDOFF.md: this DLL already has two hooks that have
-// been stable for the whole project (the entry point 0x7CD810 and the main loop
-// 0x55D360). Every additional hook is a new way to corrupt the game, and the
-// observation these two were meant to make is obtainable without any hook at all
-// - by reading instance memory from the existing main-loop hook, which is what
-// ReportInstanceAnims does.
-//
-// For reference, the addresses that were being probed:
-//   0x451750  per-slot anim helper; computes Type + 0xF5C + slot*0x3C
-//             (0x451765 `mov edi,[esi+0x520]`, 0x451772 `lea edx,[edi+edx*4+0xF5C]`)
-//   0x44FB22  call to the BuildingClass constructor at one of four sites
-//   0x44FB27  first instruction after that call
+// The lesson: this DLL changes exactly one engine decision per hook, and every
+// extra hook is a new way to corrupt the game. A question that can be answered
+// from the existing main-loop hook (0x55D360) is answered there.
 
 // ---------------------------------------------------------------------------
-// ART section loader  (0x45F230)  --  NOT HOOKED, and why
+// ART loaders: which one ShowByArt hooks, and which one it must not
 // ---------------------------------------------------------------------------
 //
-// Hooking this was the plan for covering the whole ART vocabulary at once: write
-// ImageFile, let the engine re-read the section, and every key (Buildup,
-// SuperAnim*, ActiveAnim*, ...) follows automatically without enumerating any of
-// them.
+// There are two loaders, and only one of them can redirect a section.
 //
-// It does not work, and the disassembly says exactly why. The type's full ART
-// reader reads its keys BEFORE it calls this loader:
+//   0x45F230  the PARTIAL loader. It reads only nine keys itself (Image,
+//             BibShape, SpecialZOverlay, UnderRoofDoorAnim, Rubble,
+//             UnderDoorAnim, DoorAnim, RoofDeployingAnim, DeployingAnim), and
+//             the type's full reader binds everything else BEFORE calling it:
 //
-//   0x0046155A  push 0x81a60c        ; "Buildup"        <- key read here
-//   0x00461575  call 0x528a10        ; read value from the current section
-//   0x004615A3  rep movsd            ; write it into [ebp+0xE5C] (BuildupFile)
-//   0x004615C5  call 0x45F230        ; only NOW is the ART loader called
+//               0x0046155A  push 0x81a60c    ; "Buildup"   <- read first
+//               0x004615C5  call 0x45F230    ; only now the loader runs
 //
-// By the time a hook on 0x45F230 runs, Buildup (and every other key that reader
-// handles) has already been read and bound. Changing the section name there can
-// only affect keys this loader itself reads, which the same scan shows are just:
+//             So a hook here cannot reach ActiveAnim / IdleAnim / Buildup, which
+//             is why it is not installed.
 //
-//   Image, BibShape, SpecialZOverlay, UnderRoofDoorAnim, Rubble,
-//   UnderDoorAnim, DoorAnim, RoofDeployingAnim, DeployingAnim
-//
-// So the loader hook is removed rather than left in place looking like it does
-// something it cannot.
-//
-// The real constraint: a building type's ART is fully parsed ONCE, during
-// startup, BEFORE the main loop and before any country rule can be known. Keys
-// bound at that moment cannot be redirected afterwards; only keys the engine
-// re-reads at draw time (the main Image) can be changed at runtime. That is
-// exactly the split observed in practice - the main image switches, everything
-// else stays on the source section.
+//   0x45FE50  the FULL parser, hooked further down. It runs before ImageFile is
+//             read (0x461608 `lea edi,[ebp+0x1F8]`), which is the only moment at
+//             which the section name still decides what the engine parses.
 
 // ---------------------------------------------------------------------------
-// REMOVED: Draw-time art selection  (BuildingClass::GetImage, 0x4513D0)
+// REMOVED: the draw-time per-country mechanisms
 // ---------------------------------------------------------------------------
 //
-// This hook returned a per-country type clone at draw time, i.e. it was one of
-// the two mechanisms behind "show a building as its owner's country". Both are
-// gone now:
+// Two hooks used to live here - BuildingClass::GetImage (0x4513D0) and
+// AnimClass::Draw (0x423AC0) - and both belonged to the per-country appearance
+// feature that Ext\CountryArt now implements properly. They are gone because
+// they needed per-country type CLONES built as
+// `memcpy(source) + ImageFile=<target section>`, which paired the target
+// section's art with the SOURCE type's animation names (wrong activity
+// animations), and because the draw-time swap duplicated the construction-time
+// swap, so one building was redirected twice.
 //
-//   * it needed per-country type clones, and a clone was built as
-//     `memcpy(source) + ImageFile=<target section>` - so it carried the TARGET
-//     section's art together with the SOURCE type's animation names. That is
-//     what made the activity animations wrong, and it is why the per-country
-//     path was disabled before.
-//   * it also duplicated the construction-time swap, so a single building was
-//     being redirected twice, once per frame.
-//
-// The global ShowByArt path (rename the type's ART section before the engine
-// parses it) needs no clone and no draw hook, and is what this DLL uses now.
-
-
-
-// Two diagnostic probes were removed here (0x4518C1 playback loop and 0x451A2F
-// Anims[] store). Their findings are in HANDOFF.md: the engine creates animation
-// objects for other buildings such as CAWASH18 but never for GACNST, and Anims[]
-// stays empty, so the playback loop never runs.
-
-// ---------------------------------------------------------------------------
-// REMOVED: AnimClass::Draw hook  (0x423AC0) -- per-animation country visibility
-// ---------------------------------------------------------------------------
-//
-// This hooked the animation draw path and marked an animation Invisible when the
-// owner's country was not listed on the animation's own art section. It was part
-// of the per-country feature and is gone with it (it also depended on the same
-// clone/owner lookups).
+// Ext\CountryArt keeps the clones but has the ENGINE parse the target section
+// into them, and swaps the type once, at construction. Ext\ShowByCountry does
+// it without any clone at all, by renaming the section before the parse.
 
 
 // ---------------------------------------------------------------------------
-// BuildingClass constructor  (0x43B740)  --  DIAGNOSTIC
+// BuildingClass constructor  (0x43B740)  --  NOT hooked here
 // ---------------------------------------------------------------------------
 //
-// This is the single point where a building's Type is written for the first time:
+// A building's Type is written at 0x43B756 (`mov [esi+0x520], ecx`), and
+// Ext\CountryArt hooks exactly that instruction to substitute a per-country
+// copy - see further down.
 //
-//   0x0043B740  mov  eax, [esp + 8]        ; (arg)
-//   0x0043B750  mov  ecx, [esp + 0x14]     ; the BuildingTypeClass*
-//   0x0043B756  mov  [esi + 0x520], ecx    ; Type <- set here
-//
-// There are only four call sites in the whole binary (0x44FB22, 0x44FD8A,
-// 0x45E81F, 0x45E89C), yet live logs show only the first is ever reached - and
-// only for map scenery. A deployed construction yard never appears in those
-// logs, so it must be created through a path that does not pass through them.
-//
-// Hooking the CONSTRUCTOR rather than the call sites therefore sees every
-// BuildingClass that is ever created, and this log says which ones those are.
-// It is read-only: the constructor runs unchanged.
-//
-// SIZE 5 == `mov eax,[esp+8]` (4) + `push ebx` (1).
-// The constructor-entry probe is retained but disabled: reading Type from the
-// stack kept producing unreadable pointers, while the store instruction below
-// gives both operands exactly. Kept as documentation of what was tried.
-#if 0
-DEFINE_HOOK(43B740, karst_ShowByCountry_BuildingCtor, 5)
-{
-	// __thiscall: ECX = the new BuildingClass. The Type is the FIRST STACK
-	// ARGUMENT, which the constructor itself reaches like this:
-	//
-	//   0x0043B744..0x0043B747  push ebx / ebp / esi / edi   ; ESP -= 16
-	//   0x0043B750  mov ecx, [esp + 0x14]   ; = [entryESP + 4] after those pushes
-	//   0x0043B756  mov [esi + 0x520], ecx  ; Type
-	//
-	// A first version read [esp + 0x14] at hook time, where ESP is still the entry
-	// value, so it picked up an unrelated stack slot - which is why every line
-	// logged `type=00000000`.
-	const DWORD* typeArg = reinterpret_cast<const DWORD*>(R->ESP() + 4);
-
-	static int ctorLogsLeft = 40;
-
-	if (ctorLogsLeft > 0)
-	{
-		--ctorLogsLeft;
-
-		DWORD typeValue = 0;
-		if (typeArg && !IsBadReadPtr(typeArg, sizeof(DWORD)))
-			typeValue = *typeArg;
-
-		// Log BOTH candidate name fields, raw, so the correct one is settled from
-		// data rather than assumed:
-		//   +0x24  AbstractTypeClass::ID      (the type's name, e.g. "GACNST")
-		//   +0x1F8 ObjectTypeClass::ImageFile (the ART section the engine loads)
-		char idText[32] = { 0 };
-		char sectionText[32] = { 0 };
-
-		if (typeValue >= 0x400000 && typeValue < 0x7E4000)
-		{
-			const char* id = reinterpret_cast<const char*>(typeValue + 0x24);
-			if (!IsBadReadPtr(id, 1) && id[0] >= 0x20 && id[0] < 0x7F)
-				strncpy_s(idText, id, _TRUNCATE);
-
-			const char* imageFile = reinterpret_cast<const char*>(typeValue + 0x1F8);
-			if (!IsBadReadPtr(imageFile, 1)
-				&& imageFile[0] >= 0x20 && imageFile[0] < 0x7F)
-			{
-				strncpy_s(sectionText, imageFile, _TRUNCATE);
-			}
-		}
-
-		wchar_t wideId[64] = { 0 };
-		wchar_t wideSection[64] = { 0 };
-
-		if (idText[0])
-			MultiByteToWideChar(CP_ACP, 0, idText, -1, wideId, 64);
-
-		if (sectionText[0])
-			MultiByteToWideChar(CP_ACP, 0, sectionText, -1, wideSection, 64);
-
-		Karst::LogInfo(L"ShowByCountry[ctor]: this=%p type=%p ID='%ls' ImageFile='%ls'",
-			reinterpret_cast<void*>(R->ECX()),
-			reinterpret_cast<void*>(typeValue),
-			wideId[0] ? wideId : L"<bad>",
-			wideSection[0] ? wideSection : L"<bad>");
-	}
-
-	return 0;
-}
-#endif
+// Hooking the constructor ENTRY instead (0x43B740, size 5) was tried and is not
+// installed: the Type argument has to be read from a stack slot whose position
+// depends on how many registers the prologue has already pushed, and every
+// attempt logged `type=00000000`. The store instruction hands both operands over
+// directly.
 
 
 // ---------------------------------------------------------------------------

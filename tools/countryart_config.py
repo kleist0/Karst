@@ -88,6 +88,11 @@ def rewrite(path, targets, remove):
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     shutil.copyfile(path, f"{path}.bak-before-countryart-{stamp}")
 
+    # Keep the file's own line endings: rulesmd.ini is CRLF, and inserting LF-only
+    # lines would leave the file with mixed endings (the rest of the project
+    # treats that as a defect - see docs\二次开发须知.md §6.6).
+    eol = "\r\n" if "\r\n" in text else "\n"
+
     out = []
     current = None
     handled = []
@@ -101,8 +106,8 @@ def rewrite(path, targets, remove):
             # Put the keys immediately after the section header, which is where a
             # mod author would write them.
             if current in targets and not remove:
-                out.append(f"ShowByCountries={COUNTRY_LIST}\n")
-                out.append(f"ShowBySHP={ART[current]}\n")
+                out.append(f"ShowByCountries={COUNTRY_LIST}{eol}")
+                out.append(f"ShowBySHP={ART[current]}{eol}")
                 handled.append(current)
             continue
 

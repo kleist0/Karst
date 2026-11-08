@@ -32,7 +32,9 @@
 // a clone was `memcpy(source) + ImageFile=<target section>`, which paired the
 // target section's art with the SOURCE type's animation names, and that is what
 // made the activity animations wrong. It was removed, not merely disabled.
-// See HANDOFF.md before reintroducing anything of that shape.
+//
+// That feature lives in Ext\CountryArt instead, where the ENGINE parses the
+// target section into each copy - do not reintroduce the memcpy-only shape here.
 
 // The interface only passes pointers across, so the engine class never needs to
 // be included here. The declaration must sit at global scope: inside the
@@ -72,8 +74,10 @@ namespace Karst
 			bool Init();
 			bool IsInitialized();
 
-			// Marks the feature active and applies the footprint copy once, as soon
-			// as a match is running.
+			// Called every frame from the main loop. Marks the feature active, and
+			// re-applies the footprint copy whenever the engine publishes a new
+			// building-type list - i.e. once per match. The type objects a previous
+			// match was written to do not survive into the next one.
 			void MarkGameRunning();
 
 			// -------------------------------------------------------------------
