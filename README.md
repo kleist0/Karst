@@ -10,7 +10,7 @@
 Karst 由**两半**组成，缺一不可：
 
 * **C++ 侧** —— `Release\Karst.dll`：hook 引擎、INI 热重载、按国家外观。
-* **C# 侧** —— `dyrinpr\`（脚本宿主 `Dyrinpr.dll` + 引擎绑定 + Roslyn）：
+* **C# 侧** —— `refs\dyrinpr\`（脚本宿主 `Dyrinpr.dll` + 引擎绑定 + Roslyn）：
   在游戏进程里编译并加载用户写的 `.cs` 脚本。
 
 只复制 `Karst.dll` 会得到一个**没有脚本系统**的 Karst，而且是静默失效。
@@ -38,8 +38,14 @@ Karst\
    │  └─ KarstConfig.h/.cpp       karst.ini 的类型化视图
    ├─ Core\
    │  └─ Log.h/.cpp       日志（调试输出 + 可选 karst.log）
-   └─ Ext\
-      └─ README.md        功能模块规范，新功能放这里
+   └─ Ext\                 功能模块，一个子目录一个功能
+      ├─ ShowByCountry\     ShowByArt：把建筑的 ART 段换成另一个建筑的
+      ├─ CountryArt\        ShowByCountries / ShowBySHP：按拥有者国家显示不同外观
+      ├─ IniHotReload\      运行中重读规则 INI
+      ├─ BuildCost\         [General] BuildCost 统一造价
+      ├─ DistributeSW\      DistributeBuild：每个建筑各一份超武充能
+      ├─ VirtualSeat\       虚拟载员
+      └─ README.md          功能模块规范，新功能放这里
 ```
 
 ## 快速入口（双击即可）
@@ -101,22 +107,48 @@ msbuild Karst.sln /p:Configuration=Release /p:Platform=x86
 
 ## 已实现的功能
 
-### ShowByCountries / ShowBySHP —— 按国家显示不同建筑图像
+### ShowByArt —— 让建筑完全使用另一个建筑的 ART
 
-在建筑的 ART 段里配置两个平行列表，按**拥有者的国家**切换显示图像：
+写在**被改的建筑自己**的段里（`rulesmd.ini` 优先、`artmd.ini` 次之）：
+
+```ini
+[NAPOWR]
+ShowByArt=GAPOWR
+```
+
+外观、**全部动画**（待机、生产、破损、活动件 `_a`）、占地与色盘都按目标建筑来。
+Karst 只在引擎读取 ART **之前**把段名改掉，之后图像与动画全部由引擎自己的解析器建立 ——
+本 DLL 不做任何绘制。
+
+目标建筑的 `Image=` 与段名不同时要多写一行，否则外观对、**占地不跟随**：
+
+```ini
+[NAMISL]
+ShowByArt=GAWETH        ; 段名（artmd.ini 里的段）
+ShowByArtType=GAWEAT    ; 类型 ID（[GAWEAT] Image=GAWETH 的那个 GAWEAT）
+```
+
+- 完整说明与排查清单：[docs/已有功能0.1.0.md](docs/已有功能0.1.0.md) 第一节
+- 实现位置：`src\Ext\ShowByCountry\` —— **目录名是历史遗留，它现在只实现 ShowByArt**
+- **不支持按国家区分**：那是下面的 CountryArt，两者互不干扰、可同时用
+
+### ShowByCountries / ShowBySHP —— 按拥有者国家显示不同建筑图像
+
+在建筑自己的段里配置两个**平行列表**（下标一一对应），按**拥有者的国家**切换外观：
 
 ```ini
 [GACNST]
 ShowByCountries=Americans,Alliance,French,Germans,British
-ShowBySHP=GAPILE,GATECH,GAPOWR,GAREFN,GADEPT
+ShowBySHP=YACNST,NACNST,GAPILE,GATECH,GAPOWR
 ```
 
-美国玩家（或 AI）看到的建造厂变成 GAPILE，法国玩家看到 GAPOWR，依此类推。
-国家不在列表里 → 完全不生效。
+美国玩家（或 AI）的建造厂画成 YACNST，韩国玩家画成 NACNST，依此类推；
+国家不在列表里 → 完全不生效，建筑保持原样。
 
-- 完整说明、键名写法、校验规则与排查清单：[docs/已有功能0.1.0.md](docs/已有功能0.1.0.md)（第 1 节）
-- 配置有误时（数量不一致/国家名不存在等）**进游戏前**弹错误框并写日志，功能整体不生效
-- 实现位置：`src\Ext\ShowByCountry\`，钩子登记在 `src\dllmain.cpp`
+- 完整说明、校验规则与排查清单：[docs/已有功能0.1.0.md](docs/已有功能0.1.0.md) 第三节
+- 任何一条不合法（只写一个键 / 长度不一致 / 国家名不存在 / 重复 / 空项）→
+  **该条被忽略并写日志**，不会出现"半个映射悄悄生效"
+- 实现位置：`src\Ext\CountryArt\`，钩子登记在 `src\dllmain.cpp`
 
 ### IniHotReload —— 运行中重读规则 INI
 
@@ -132,7 +164,7 @@ Files=rulesmd.ini,artmd.ini,aimd.ini
 
 列表就是**全部边界**：没列出的文件（`RA2MD.INI`、`karst.ini`、`ddraw.ini` …）完全不碰；
 `.ini` 后缀写死在程序里。它**不新增任何钩子** —— 重载搭在已有的主循环钩子上执行，
-所以 hook 数仍是 11。
+所以 hook 数仍是 12。
 
 - 完整说明、限制与排查清单：[docs/已有功能0.1.0.md](docs/已有功能0.1.0.md) 第 1 节
 - 用法、边界与排查清单：[docs/已有功能0.1.0.md](docs/已有功能0.1.0.md)（第 1 节）
