@@ -48,6 +48,10 @@
          rules section says DistributeBuild=yes; see
          src\Ext\DistributeSW\DistributeSW.h. -->
     <ClCompile Include="src\Ext\DistributeSW\DistributeSW.cpp" />
+    <!-- A separate feature: keeps the mouse usable while a cinematic's LockInput
+         is in effect. No hook - two byte writes from the main loop; see
+         src\Ext\Cinematic\Cinematic.h. -->
+    <ClCompile Include="src\Ext\Cinematic\Cinematic.cpp" />
     <!-- Scripts: the C# script host. Starts the .NET runtime and loads the
          assemblies under <game>\dyrinpr\; see src\Script\ClrHost.h. -->
     <ClCompile Include="src\Script\ClrHost.cpp">
@@ -76,6 +80,7 @@
     <ClInclude Include="src\Ext\IniHotReload\IniWatchThread.h" />
     <ClInclude Include="src\Ext\VirtualSeat\VirtualSeat.h" />
     <ClInclude Include="src\Ext\DistributeSW\DistributeSW.h" />
+    <ClInclude Include="src\Ext\Cinematic\Cinematic.h" />
     <ClInclude Include="src\Script\ClrHost.h" />
     <None Include="docs\IniHotReload.md" />
     <None Include="tools\smoke_test.cpp" />

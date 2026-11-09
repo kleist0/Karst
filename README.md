@@ -45,6 +45,7 @@ Karst\
       ├─ BuildCost\         [General] BuildCost 统一造价
       ├─ DistributeSW\      DistributeBuild：每个建筑各一份超武充能
       ├─ VirtualSeat\       虚拟载员
+      ├─ Cinematic\         过场动画时不锁鼠标
       └─ README.md          功能模块规范，新功能放这里
 ```
 

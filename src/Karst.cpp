@@ -7,6 +7,7 @@
 #include <Ext/BuildCost/BuildCost.h>
 #include <Ext/VirtualSeat/VirtualSeat.h>
 #include <Ext/DistributeSW/DistributeSW.h>
+#include <Ext/Cinematic/Cinematic.h>
 #include <Script/ClrHost.h>
 #include <Version.h>
 
@@ -82,6 +83,7 @@ void KarstExtension::OnProcessDetach()
 	// about to free all of them.
 	Karst::Ext::VirtualSeat::ResetForNewMatch();
 
+
 	// Stop the INI watcher thread before the process tears down.
 	Karst::Ext::IniHotReload::Shutdown();
 
@@ -123,6 +125,12 @@ void KarstExtension::OnGameStart()
 	// a superweapon type's own rules section and is read on first use, and the
 	// per-building charges are rebuilt from the live building list every frame.
 	Karst::Ext::DistributeSW::Init();
+
+
+	// A SEPARATE feature (Ext\Cinematic). Two byte writes per frame while a
+	// mission's LockInput is in effect, so the mouse keeps working during a
+	// cinematic; see src\Ext\Cinematic\Cinematic.h.
+	Karst::Ext::Cinematic::Init();
 
 	// C# scripts. The host is started here so any problem with the assemblies is
 	// reported before the game gets far; the scripts themselves act later, at the
@@ -275,6 +283,11 @@ void KarstExtension::OnFrame()
 	// each superweapon type whose section says DistributeBuild=yes. With no such
 	// type it is one pass over the building list that finds nothing.
 	Karst::Ext::DistributeSW::OnFrame();
+
+
+	// A SEPARATE feature (Ext\Cinematic). Keeps the pointer usable while a
+	// cinematic has the engine's input locked.
+	Karst::Ext::Cinematic::OnFrame();
 
 	// C# scripts: drive their per-frame callback.
 	//
