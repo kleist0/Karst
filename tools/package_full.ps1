@@ -48,7 +48,7 @@ param(
     [switch]$Zip,              # also produce a .zip next to the folder
     [string]$OutDir = '',      # where the package lands (default: <repo>\发布包)
     [switch]$Open,             # open the output folder when finished (off by default)
-    [string]$GameDir = 'E:\_game\RA2\yr_karst_test_2'
+    [string]$GameDir = 'E:\_game\RA2\yr_karst_test'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -132,8 +132,28 @@ Ok ("C# host    {0:N0} bytes" -f (Get-Item (Join-Path $csOut 'Dyrinpr.dll')).Len
 # Both checks have caught real crashes; see tools\build_deploy.ps1 for the story.
 if ($python) {
     Step 'hookcheck (size >= 5, ends on an instruction boundary)'
+
+    # hookcheck.py disassembles the game to prove every hook ends on an
+    # instruction boundary, and finds gamemd.exe through KARST_GAMEMD
+    # (see tools\dumpscan.py). Point it at this machine's game folder for the
+    # duration of the call, so the check cannot silently depend on a path that
+    # only existed on the machine this script was written on.
+    $gameExe = Join-Path $GameDir 'gamemd.exe'
+    $previousGameExe = $env:KARST_GAMEMD
+
+    if (Test-Path $gameExe) {
+        $env:KARST_GAMEMD = $gameExe
+    } else {
+        Warn "  no gamemd.exe under $GameDir - hookcheck will use KARST_GAMEMD or its default path"
+    }
+
     & $python (Join-Path $tools 'hookcheck.py') $dll
-    if ($LASTEXITCODE -ne 0) { Fail 'hookcheck reported unsafe hooks - NOT packaging' }
+    $hookExit = $LASTEXITCODE
+
+    if ($null -eq $previousGameExe) { Remove-Item Env:\KARST_GAMEMD -ErrorAction SilentlyContinue }
+    else { $env:KARST_GAMEMD = $previousGameExe }
+
+    if ($hookExit -ne 0) { Fail 'hookcheck reported unsafe hooks - NOT packaging' }
     Ok 'all hooks well formed'
 
     $ext = @('Ares.dll', 'Phobos.dll', 'Kratos.dll') |
