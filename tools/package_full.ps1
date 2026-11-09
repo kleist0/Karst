@@ -266,12 +266,17 @@ Karst $version - 安装说明
 
 一、这是什么
     Karst 是《尤里的复仇》(YR 1.001) 的引擎扩展，通过 Syringe 注入 gamemd.exe。
-    当前包含五个功能：
+    当前包含以下功能（每条的配置与排查见 docs\已有功能0.1.0.md）：
 
-      * ShowByArt / ShowByCountries    一个建筑按【拥有者国家】显示不同外观
+      * ShowByArt                      整段换成另一个建筑的 ART（外观 + 占地）
+      * ShowByCountries / ShowBySHP    同一个建筑按【拥有者国家】换外观、占地、图标
+      * CountryArt                     与上一行是同一功能（文档里的模块名）
       * Sidebar.MixFileIndex           每个【国家】使用不同的侧边栏 MIX
-      * CountryArt                     建筑外观、占地与图标的按国家切换
       * IniHotReload                   运行中重读规则 INI，改规则不用重启游戏
+      * BuildCost                      一个 [General] 键统一所有单位/建筑的造价
+      * VirtualSeat                    载具的“看不见的载员”，各自索敌开火
+      * DistributeBuild                每个建筑各提供一份超级武器充能
+      * Cinematic                      过场动画时不再锁死鼠标
       * C# 脚本系统                     用 C# 给单位挂事件（每帧/开火/受伤/出场/移除）
 
     详细说明见 docs\ 下的文档；脚本写法见 docs\已有功能0.1.0.md ，可用 API 查 docs\脚本API参考.md 。
