@@ -8,6 +8,9 @@
 #include <Ext/VirtualSeat/VirtualSeat.h>
 #include <Ext/DistributeSW/DistributeSW.h>
 #include <Ext/Cinematic/Cinematic.h>
+#include <Ext/CursorKill/CursorKill.h>
+#include <Ext/UnitTakeover/UnitTakeover.h>
+#include <Ext/UnitSell/UnitSell.h>
 #include <Script/ClrHost.h>
 #include <Version.h>
 
@@ -131,6 +134,19 @@ void KarstExtension::OnGameStart()
 	// mission's LockInput is in effect, so the mouse keeps working during a
 	// cinematic; see src\Ext\Cinematic\Cinematic.h.
 	Karst::Ext::Cinematic::Init();
+
+	// A SEPARATE feature (Ext\CursorKill). Hovering the mouse over an enemy unit
+	// destroys it; the object is recorded by the DecideAction hook and damaged
+	// from here on the next frame.
+	Karst::Ext::CursorKill::Init();
+
+	// A SEPARATE feature (Ext\UnitTakeover). Select any unit and press Alt+X to
+	// transfer it to the local player; edge-triggered, no hook of its own.
+	Karst::Ext::UnitTakeover::Init();
+
+	// A SEPARATE feature (Ext\UnitSell). Hold Alt+L and box-select: everything
+	// selected is sold and the money goes to the local player.
+	Karst::Ext::UnitSell::Init();
 
 	// C# scripts. The host is started here so any problem with the assemblies is
 	// reported before the game gets far; the scripts themselves act later, at the
@@ -288,6 +304,12 @@ void KarstExtension::OnFrame()
 	// A SEPARATE feature (Ext\Cinematic). Keeps the pointer usable while a
 	// cinematic has the engine's input locked.
 	Karst::Ext::Cinematic::OnFrame();
+
+	Karst::Ext::CursorKill::OnFrame();
+
+	Karst::Ext::UnitTakeover::OnFrame();
+
+	Karst::Ext::UnitSell::OnFrame();
 
 	// C# scripts: drive their per-frame callback.
 	//

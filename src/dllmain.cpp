@@ -12,6 +12,8 @@
 #include <Ext/ShowByCountry/ShowByCountry.h>
 #include <Ext/CountryArt/CountryArt.h>
 #include <Ext/BuildCost/BuildCost.h>
+#include <Ext/CursorKill/CursorKill.h>
+#include <Ext/UnitSell/UnitSell.h>
 #include <Ext/VirtualSeat/VirtualSeat.h>
 #include <Ext/DistributeSW/DistributeSW.h>
 #include <Version.h>
@@ -686,4 +688,30 @@ DEFINE_HOOK(6F3D50, karst_VirtualSeat_GhostFLH_Exit, 10)
 	return 0;
 }
 
+// ---------------------------------------------------------------------------
+// Hover-kill  (0x692610)  --  Ext\CursorKill
+// ---------------------------------------------------------------------------
+//
+// DisplayClass::DecideAction is where the engine works out what the cursor is
+// over; its second argument is that object, already resolved through the
+// engine's own layer/height rules:
+//
+//   0x00692610  sub  esp, 0x10          ; <-- hook here (8 bytes = sub + mov)
+//   0x00692613  mov  eax, [0xA8ECC8]    ; CurrentObjects.Count
+//   0x00692628  mov  esi, [esp + 0x28]  ; the 2nd argument (pObject)
+//
+// Thiscall: ECX is the DisplayClass*, [esp+4] is &cell, [esp+8] is the object.
+// Only the pointer is recorded; the damage is applied from OnFrame, because
+// deleting an object while the engine is still deciding the cursor action is
+// not safe.
+DEFINE_HOOK(692610, karst_CursorKill_DecideAction, 8)
+{
+	const DWORD esp = R->ESP();
+	const void* pCell = *reinterpret_cast<void**>(esp + 4);
+	void* pObject = *reinterpret_cast<void**>(esp + 8);
 
+	Karst::Ext::CursorKill::OnHoverObject(pObject);
+	Karst::Ext::UnitSell::OnCursorCell(pCell);
+
+	return 0;
+}

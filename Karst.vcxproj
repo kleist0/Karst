@@ -33,6 +33,9 @@
          It hooks the engine's own type-cost reader and keeps no state of its own;
          see src\Ext\BuildCost\BuildCost.h. -->
     <ClCompile Include="src\Ext\BuildCost\BuildCost.cpp" />
+    <ClCompile Include="src\Ext\CursorKill\CursorKill.cpp" />
+    <ClCompile Include="src\Ext\UnitTakeover\UnitTakeover.cpp" />
+    <ClCompile Include="src\Ext\UnitSell\UnitSell.cpp" />
     <!-- A separate feature: runtime INI hot reload. Watches only the files whose
          names are listed in karst.hotreload.ini and adds no hook of its own; see
          src\Ext\IniHotReload\IniHotReload.h. -->
@@ -81,6 +84,9 @@
     <ClInclude Include="src\Ext\VirtualSeat\VirtualSeat.h" />
     <ClInclude Include="src\Ext\DistributeSW\DistributeSW.h" />
     <ClInclude Include="src\Ext\Cinematic\Cinematic.h" />
+    <ClInclude Include="src\Ext\CursorKill\CursorKill.h" />
+    <ClInclude Include="src\Ext\UnitTakeover\UnitTakeover.h" />
+    <ClInclude Include="src\Ext\UnitSell\UnitSell.h" />
     <ClInclude Include="src\Script\ClrHost.h" />
     <None Include="docs\IniHotReload.md" />
     <None Include="tools\smoke_test.cpp" />
