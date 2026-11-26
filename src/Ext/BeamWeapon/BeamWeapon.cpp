@@ -23,7 +23,9 @@ namespace
 	//   LBeam=yes
 	//   LBeamDuration=10        frames the beam lives
 	//   LBeamDamage=5           damage per frame to everything on the beam
-	//   LBeamWidth=64           half-width of the damaging corridor (leptons)
+	//   LBeamWidth=1            half-width of the damaging corridor (cells)
+	//   LBeamLength=4           beam reach (cells)
+	//                           (1 cell = 256 leptons)
 	//   LBeamColor=255,0,0      beam colour (optional)
 	//   LBeamIsHouseColor=no    use the owner's house colour
 	struct BeamSpec
@@ -32,6 +34,7 @@ namespace
 		int duration = 10;
 		int damage = 5;
 		int width = 64;
+		int length = 0;
 		ColorStruct color = ColorStruct(255, 255, 255);
 		bool houseColor = false;
 	};
@@ -133,7 +136,8 @@ namespace
 				spec.enabled = true;
 				spec.duration = ReadRawInt(pINI, section, "LBeamDuration", 10);
 				spec.damage = ReadRawInt(pINI, section, "LBeamDamage", 5);
-				spec.width = ReadRawInt(pINI, section, "LBeamWidth", 64);
+				spec.width = ReadRawInt(pINI, section, "LBeamWidth", 1);
+				spec.length = ReadRawInt(pINI, section, "LBeamLength", 4);
 				spec.color = ReadColor(pINI, section, "LBeamColor", ColorStruct(255, 255, 255));
 				spec.houseColor = ReadBool(pINI, section, "LBeamIsHouseColor", false);
 
@@ -162,10 +166,33 @@ namespace
 		if (!spec || !spec->enabled || !pOwner || !pTarget)
 			return;
 
-		// Muzzle -> target.
+		// Muzzle, and the direction the target gives us. The beam itself does not
+		// stop at the target: it extends along that direction to its full reach,
+		// so everything on the line gets hurt (a straight-line shot, not a
+		// "laser that ends on the target").
 		CoordStruct from = pOwner->GetCoords();
 		pOwner->GetFLH(&from, weaponIndex, from);
-		const CoordStruct to = pTarget->GetCoords();
+		const CoordStruct targetPos = pTarget->GetCoords();
+
+		double dx = static_cast<double>(targetPos.X - from.X);
+		double dy = static_cast<double>(targetPos.Y - from.Y);
+		const double dist = std::sqrt(dx * dx + dy * dy);
+		if (dist < 1.0)
+		{
+			dx = 1.0;
+			dy = 0.0;
+		}
+
+		// LBeamLength is in cells (1 cell = 256 leptons).
+		const double desired = (spec->length > 0)
+			? static_cast<double>(spec->length) * 256.0
+			: 1024.0;
+		const double scale = desired / (dist < 1.0 ? 1.0 : dist);
+
+		CoordStruct to;
+		to.X = from.X + static_cast<int>(dx * scale);
+		to.Y = from.Y + static_cast<int>(dy * scale);
+		to.Z = from.Z;
 
 		ColorStruct inner = spec->color;
 		ColorStruct outer = spec->color;
@@ -260,7 +287,8 @@ namespace Karst
 							continue;
 
 						const CoordStruct coords = pTechno->GetCoords();
-						if (DistanceToSegment(coords, beam.from, beam.to) > static_cast<double>(beam.width))
+						// beam.width is in cells; the corridor test works in leptons.
+						if (DistanceToSegment(coords, beam.from, beam.to) > static_cast<double>(beam.width) * 256.0)
 							continue;
 
 						int damage = beam.damage;
