@@ -36,6 +36,8 @@
     <ClCompile Include="src\Ext\CursorKill\CursorKill.cpp" />
     <ClCompile Include="src\Ext\UnitTakeover\UnitTakeover.cpp" />
     <ClCompile Include="src\Ext\UnitSell\UnitSell.cpp" />
+    <ClCompile Include="src\Ext\EmptyReloadSound\EmptyReloadSound.cpp" />
+    <ClCompile Include="src\Ext\ReloadOverride\ReloadOverride.cpp" />
     <!-- A separate feature: runtime INI hot reload. Watches only the files whose
          names are listed in karst.hotreload.ini and adds no hook of its own; see
          src\Ext\IniHotReload\IniHotReload.h. -->
@@ -87,6 +89,8 @@
     <ClInclude Include="src\Ext\CursorKill\CursorKill.h" />
     <ClInclude Include="src\Ext\UnitTakeover\UnitTakeover.h" />
     <ClInclude Include="src\Ext\UnitSell\UnitSell.h" />
+    <ClInclude Include="src\Ext\EmptyReloadSound\EmptyReloadSound.h" />
+    <ClInclude Include="src\Ext\ReloadOverride\ReloadOverride.h" />
     <ClInclude Include="src\Script\ClrHost.h" />
     <None Include="docs\IniHotReload.md" />
     <None Include="tools\smoke_test.cpp" />

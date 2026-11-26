@@ -11,6 +11,8 @@
 #include <Ext/CursorKill/CursorKill.h>
 #include <Ext/UnitTakeover/UnitTakeover.h>
 #include <Ext/UnitSell/UnitSell.h>
+#include <Ext/EmptyReloadSound/EmptyReloadSound.h>
+#include <Ext/ReloadOverride/ReloadOverride.h>
 #include <Script/ClrHost.h>
 #include <Version.h>
 
@@ -147,6 +149,14 @@ void KarstExtension::OnGameStart()
 	// A SEPARATE feature (Ext\UnitSell). Hold Alt+L and box-select: everything
 	// selected is sold and the money goes to the local player.
 	Karst::Ext::UnitSell::Init();
+
+	// A SEPARATE feature (Ext\EmptyReloadSound). Plays a configured sound when a
+	// unit starts its empty-ammo reload timer.
+	Karst::Ext::EmptyReloadSound::Init();
+
+	// A SEPARATE feature (Ext\ReloadOverride). Redefines Reload=-1 / EmptyReload=-1
+	// as 'never reload' instead of the stock fall-back.
+	Karst::Ext::ReloadOverride::Init();
 
 	// C# scripts. The host is started here so any problem with the assemblies is
 	// reported before the game gets far; the scripts themselves act later, at the

@@ -14,6 +14,8 @@
 #include <Ext/BuildCost/BuildCost.h>
 #include <Ext/CursorKill/CursorKill.h>
 #include <Ext/UnitSell/UnitSell.h>
+#include <Ext/EmptyReloadSound/EmptyReloadSound.h>
+#include <Ext/ReloadOverride/ReloadOverride.h>
 #include <Ext/VirtualSeat/VirtualSeat.h>
 #include <Ext/DistributeSW/DistributeSW.h>
 #include <Version.h>
@@ -712,6 +714,53 @@ DEFINE_HOOK(692610, karst_CursorKill_DecideAction, 8)
 
 	Karst::Ext::CursorKill::OnHoverObject(pObject);
 	Karst::Ext::UnitSell::OnCursorCell(pCell);
+
+	return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Empty-reload sound  (0x6FB0C9)  --  Ext\EmptyReloadSound
+// ---------------------------------------------------------------------------
+//
+// Inside the routine that starts a TechnoClass' reload timer:
+//
+//   0x006FB0A2  test ecx, ecx            ; ammo left?
+//   0x006FB0A4  jne  0x6FB0E6            ; not empty
+//   0x006FB0B0  cmp  [Type+0x69C], -1    ; EmptyReload configured?
+//   0x006FB0B7  je   0x6FB0E6
+//   0x006FB0C9  mov  eax, [eax+0x69C]    ; <-- hook here (6 bytes)
+//
+// ESI is the TechnoClass*. The module debounces, because the engine calls this
+// routine repeatedly while a unit is reloading.
+DEFINE_HOOK(6FB0C9, karst_EmptyReloadSound_Play, 6)
+{
+	Karst::Ext::EmptyReloadSound::OnEmptyReload(reinterpret_cast<void*>(R->ESI()));
+
+	return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Reload=-1 / EmptyReload=-1  (0x6FB160)  --  Ext\ReloadOverride
+// ---------------------------------------------------------------------------
+//
+// Common return of the reload routine (0x6FB080): both the "nothing to reload"
+// path and the normal-reload path end here, with the timer already started.
+// The configured EmptyReload path returns at 0x6FB0E1 and is not touched.
+//
+//   0x006FB160  pop  esi     ; <-- hook here (5 bytes = pop esi/add esp,0xC/ret)
+//
+// The type fields are never written: swapping EmptyReload to a sentinel made
+// Phobos' 0x6FB0CF hook (TechnoClass_StartReloading_EmptyReload_Veterancy) read
+// that huge value and crash with 0xC0000005. Here only the timer's TimeLeft is
+// replaced, and only when the applicable value is negative.
+DEFINE_HOOK(6FB160, karst_ReloadOverride_Return, 5)
+{
+	// ESI is NOT the TechnoClass here: 0x6FB0CF did dd esi, 0x1FC, so it
+	// points at the reload timer. Put the object pointer back before the handler
+	// touches any TechnoClass field (this offset mistake read this+0x4F8 and
+	// crashed with 0xC0000005).
+	Karst::Ext::ReloadOverride::OnReloadReturn(
+		reinterpret_cast<void*>(static_cast<char*>(reinterpret_cast<void*>(R->ESI())) - 0x1FC));
 
 	return 0;
 }
