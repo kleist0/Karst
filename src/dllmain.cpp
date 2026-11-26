@@ -16,6 +16,7 @@
 #include <Ext/UnitSell/UnitSell.h>
 #include <Ext/EmptyReloadSound/EmptyReloadSound.h>
 #include <Ext/ReloadOverride/ReloadOverride.h>
+#include <Ext/BeamWeapon/BeamWeapon.h>
 #include <Ext/VirtualSeat/VirtualSeat.h>
 #include <Ext/DistributeSW/DistributeSW.h>
 #include <Version.h>
@@ -761,6 +762,33 @@ DEFINE_HOOK(6FB160, karst_ReloadOverride_Return, 5)
 	// crashed with 0xC0000005).
 	Karst::Ext::ReloadOverride::OnReloadReturn(
 		reinterpret_cast<void*>(static_cast<char*>(reinterpret_cast<void*>(R->ESI())) - 0x1FC));
+
+	return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Beam weapon  (0x6FDD73)  --  Ext\BeamWeapon
+// ---------------------------------------------------------------------------
+//
+// TechnoClass::Fire (0x6FDD50) resolves the weapon early:
+//
+//   0x006FDD50  push ebp / mov ebp, esp / and esp, -8 / sub esp, 0xA4
+//   0x006FDD61  mov  ecx, [ebp+0xC]     ; weapon index
+//   0x006FDD69  call [eax+0x3F8]        ; -> WeaponStruct*
+//   0x006FDD6F  mov  ebx, [eax]         ; EBX = WeaponTypeClass*
+//   0x006FDD71  test ebx, ebx            ; <-- hook here (6 bytes)
+//
+// So at the hook EBX is the WeaponType, ESI the TechnoClass, [ebp+8] the target
+// and [ebp+0xC] the weapon index. The module draws the muzzle->target laser and
+// registers a per-frame damage beam; it never blocks the engine's own fire.
+DEFINE_HOOK(6FDD71, karst_BeamWeapon_Fire, 6)
+{
+	TechnoClass* pOwner = reinterpret_cast<TechnoClass*>(R->ESI());
+	WeaponTypeClass* pWeapon = reinterpret_cast<WeaponTypeClass*>(R->EBX());
+	AbstractClass* pTarget = *reinterpret_cast<AbstractClass**>(R->EBP() + 8);
+	const int weaponIndex = *reinterpret_cast<int*>(R->EBP() + 0xC);
+
+	Karst::Ext::BeamWeapon::OnFire(pOwner, pWeapon, pTarget, weaponIndex);
 
 	return 0;
 }

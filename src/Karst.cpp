@@ -13,6 +13,7 @@
 #include <Ext/UnitSell/UnitSell.h>
 #include <Ext/EmptyReloadSound/EmptyReloadSound.h>
 #include <Ext/ReloadOverride/ReloadOverride.h>
+#include <Ext/BeamWeapon/BeamWeapon.h>
 #include <Script/ClrHost.h>
 #include <Version.h>
 
@@ -157,6 +158,10 @@ void KarstExtension::OnGameStart()
 	// A SEPARATE feature (Ext\ReloadOverride). Redefines Reload=-1 / EmptyReload=-1
 	// as 'never reload' instead of the stock fall-back.
 	Karst::Ext::ReloadOverride::Init();
+
+	// A SEPARATE feature (Ext\BeamWeapon). Weapons with Beam=yes fire a muzzle->target
+	// beam that damages its target every frame while the beam is visible.
+	Karst::Ext::BeamWeapon::Init();
 
 	// C# scripts. The host is started here so any problem with the assemblies is
 	// reported before the game gets far; the scripts themselves act later, at the
@@ -320,6 +325,8 @@ void KarstExtension::OnFrame()
 	Karst::Ext::UnitTakeover::OnFrame();
 
 	Karst::Ext::UnitSell::OnFrame();
+
+	Karst::Ext::BeamWeapon::OnFrame();
 
 	// C# scripts: drive their per-frame callback.
 	//

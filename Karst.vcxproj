@@ -38,6 +38,7 @@
     <ClCompile Include="src\Ext\UnitSell\UnitSell.cpp" />
     <ClCompile Include="src\Ext\EmptyReloadSound\EmptyReloadSound.cpp" />
     <ClCompile Include="src\Ext\ReloadOverride\ReloadOverride.cpp" />
+    <ClCompile Include="src\Ext\BeamWeapon\BeamWeapon.cpp" />
     <!-- A separate feature: runtime INI hot reload. Watches only the files whose
          names are listed in karst.hotreload.ini and adds no hook of its own; see
          src\Ext\IniHotReload\IniHotReload.h. -->
@@ -91,6 +92,7 @@
     <ClInclude Include="src\Ext\UnitSell\UnitSell.h" />
     <ClInclude Include="src\Ext\EmptyReloadSound\EmptyReloadSound.h" />
     <ClInclude Include="src\Ext\ReloadOverride\ReloadOverride.h" />
+    <ClInclude Include="src\Ext\BeamWeapon\BeamWeapon.h" />
     <ClInclude Include="src\Script\ClrHost.h" />
     <None Include="docs\IniHotReload.md" />
     <None Include="tools\smoke_test.cpp" />
